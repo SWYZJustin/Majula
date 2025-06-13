@@ -306,7 +306,7 @@ func (n *Node) DebugPrint(name string, message string) {
 	fmt.Printf("[%s: %s] %s\n", n.ID, name, message)
 }
 
-type NodePeer struct { // 一个nodePeer，用于记录上次的激活时间以及预估状态 Todo: 还没有实现逻辑
+type NodePeer struct {
 	LastActiveTime time.Time
 	Status         NodeStatus
 }
@@ -929,7 +929,6 @@ func (node *Node) compareRoutingTables(tempTable RoutingTableType) bool {
 	return true
 }
 
-// 从自己的channel收集直接link信息 Todo: 暂时用不着
 func (node *Node) collectLinkPaths() {
 	for channelID, channel := range node.Channels {
 		for peerID := range channel.ChannelPeers {
