@@ -24,3 +24,8 @@ Ensure you have Go installed (version 1.18+ recommended).
 git clone <your-firelink-repo>
 cd firelink
 go build -o firelink
+```
+
+## Running
+
+In the current version, directly run the compiled Firelink.exe after building the project.
