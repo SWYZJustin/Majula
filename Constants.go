@@ -11,4 +11,7 @@ const (
 	RetryLoopPeriod              time.Duration = 1 * time.Second
 	SubscribeFloodTicket         time.Duration = 1 * time.Second
 	DebugPrint                   bool          = false
+	DefaultRpcOvertime           time.Duration = 6 * time.Second
+	RpcFloodTicket               time.Duration = 10 * time.Second
+	RpcCacheCleanTicket          time.Duration = 1 * time.Minute
 )

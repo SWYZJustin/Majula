@@ -39,6 +39,22 @@ type Node struct { // Node
 
 	totalSubs      map[string][]string
 	totalSubsMutex sync.RWMutex
+
+	invokedId        int64
+	activeStubs      map[int64]*RPC_Stub
+	activeStubsMutex sync.RWMutex
+
+	rpcFuncs      map[string]map[string]RPC_Func
+	rpcFuncsMutex sync.RWMutex
+
+	receivedRpcMutex sync.Mutex
+	receivedRpcCache map[string]time.Time
+
+	totalRpcs      map[string]map[string]string
+	totalRpcsMutex sync.RWMutex
+
+	clientIDs      []string
+	clientIDsMutex sync.RWMutex
 }
 
 type SubscriptionInfo struct {
@@ -330,6 +346,22 @@ func NewNodeWithChannel(pID string, pChannels map[string]*Channel) *Node {
 		MessageVersionCounter: 0,
 		myLinksVersion:        0,
 		NodePeersMutex:        sync.RWMutex{},
+		mySubs:                make(map[string]map[string]MESSAGE_CALLBACK),
+		mySubsMutex:           sync.RWMutex{},
+		totalSubs:             make(map[string][]string),
+		totalSubsMutex:        sync.RWMutex{},
+		invokedId:             0,
+		activeStubs:           make(map[int64]*RPC_Stub),
+		activeStubsMutex:      sync.RWMutex{},
+		rpcFuncsMutex:         sync.RWMutex{},
+		rpcFuncs:              make(map[string]map[string]RPC_Func),
+		receivedRpcCache:      make(map[string]time.Time),
+		receivedRpcMutex:      sync.Mutex{},
+		totalRpcs:             make(map[string]map[string]string),
+		totalRpcsMutex:        sync.RWMutex{},
+
+		clientIDs:      make([]string, 0),
+		clientIDsMutex: sync.RWMutex{},
 	}
 	return &aNode
 }
@@ -353,12 +385,32 @@ func NewNode(pID string) *Node {
 		MessageVersionCounter: 0,
 		myLinksVersion:        0,
 		NodePeersMutex:        sync.RWMutex{},
+		mySubs:                make(map[string]map[string]MESSAGE_CALLBACK),
+		mySubsMutex:           sync.RWMutex{},
+		totalSubs:             make(map[string][]string),
+		totalSubsMutex:        sync.RWMutex{},
+		invokedId:             0,
+		activeStubs:           make(map[int64]*RPC_Stub),
+		activeStubsMutex:      sync.RWMutex{},
+		rpcFuncsMutex:         sync.RWMutex{},
+		rpcFuncs:              make(map[string]map[string]RPC_Func),
+		receivedRpcCache:      make(map[string]time.Time),
+		receivedRpcMutex:      sync.Mutex{},
+		totalRpcs:             make(map[string]map[string]string),
+		totalRpcsMutex:        sync.RWMutex{},
+
+		clientIDs:      make([]string, 0),
+		clientIDsMutex: sync.RWMutex{},
 	}
 	return &aNode
 }
 
 func (this *Node) addGlobalLinkVersion() {
 	atomic.AddInt64(&this.myLinksVersion, 1)
+}
+
+func (this *Node) addInvokedId() {
+	atomic.AddInt64(&this.invokedId, 1)
 }
 
 func (this *Node) setGlobalLinkVersion(newVersion int64) {
@@ -401,6 +453,8 @@ func (node *Node) register() {
 	go node.cleanupReceivedMsgs()
 	go node.heartbeat()
 	go node.startSubscriptionFloodLoop()
+	go node.startCleanRpcCacheLoop()
+	go node.startPeriodicRpcFlood()
 }
 
 // 使一个node退出
@@ -531,6 +585,8 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 	}
 	node.ReceivedMsgs[msgKey] = true
 
+	// Stage2: 需要查重的广播信息
+
 	switch msg.MessageData.Type {
 	case TopicInit:
 		go node.handleTopicInit(msg)
@@ -538,8 +594,12 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 	case TopicExit:
 		go node.handleTopicExit(msg)
 		return
-	case TopicPublish:
+	case TopicSubscribeFlood:
 		go node.handleSubscribeFlood(msg)
+		return
+	case RpcServiceFlood:
+		go node.handleRpcServiceFlood(msg)
+		return
 	default:
 	}
 
@@ -576,6 +636,16 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 				}
 			}
 			node.mySubsMutex.RUnlock()
+
+		case RpcRequest:
+			node.DebugPrint("onRecv-rpcRequest", "start")
+			go node.handleRpcRequest(msg)
+			return
+
+		case RpcResponse:
+			node.DebugPrint("onRecv-rpcResponse", "start")
+			go node.handleRpcResponse(msg)
+			return
 
 		default:
 			//node.DebugPrint("onRecv-Message", msg.Data)
@@ -1089,5 +1159,53 @@ func (node *Node) PrintTotalSubs() {
 
 	for topic, subs := range node.totalSubs {
 		fmt.Printf("  Topic '%s': %v\n", topic, subs)
+	}
+}
+
+func (node *Node) AddClient(clientID string) {
+	node.clientIDsMutex.Lock()
+	defer node.clientIDsMutex.Unlock()
+
+	for _, id := range node.clientIDs {
+		if id == clientID {
+			return
+		}
+	}
+	node.clientIDs = append(node.clientIDs, clientID)
+}
+
+func (node *Node) RemoveClient(clientID string) {
+	node.clientIDsMutex.Lock()
+	defer node.clientIDsMutex.Unlock()
+
+	newList := node.clientIDs[:0]
+	for _, id := range node.clientIDs {
+		if id != clientID {
+			newList = append(newList, id)
+		}
+	}
+	node.clientIDs = newList
+}
+
+func (node *Node) GetClientIDs() []string {
+	node.clientIDsMutex.RLock()
+	defer node.clientIDsMutex.RUnlock()
+
+	copyList := make([]string, len(node.clientIDs))
+	copy(copyList, node.clientIDs)
+	return copyList
+}
+
+func (node *Node) PrintClients() {
+	node.clientIDsMutex.RLock()
+	defer node.clientIDsMutex.RUnlock()
+
+	fmt.Printf("Node %s has connected clients:\n", node.ID)
+	if len(node.clientIDs) == 0 {
+		fmt.Println("  None")
+		return
+	}
+	for _, id := range node.clientIDs {
+		fmt.Printf("  - %s\n", id)
 	}
 }

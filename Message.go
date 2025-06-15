@@ -20,10 +20,13 @@ const (
 	TopicExit
 	TopicPublish
 	TopicSubscribeFlood
+	RpcRequest
+	RpcResponse
+	RpcServiceFlood
 )
 
 func checkBroadCast(pType MessageType) bool {
-	if pType == HeartBeat || pType == Hello || pType == TopicInit || pType == TopicExit || pType == TopicPublish || pType == TopicSubscribeFlood {
+	if pType == HeartBeat || pType == Hello || pType == TopicInit || pType == TopicExit || pType == TopicPublish || pType == TopicSubscribeFlood || pType == RpcServiceFlood {
 		return true
 	}
 	return false
@@ -33,6 +36,7 @@ type MessageData struct {
 	Type     MessageType
 	Data     string
 	BundleTo []string
+	Entity   string
 }
 type Message struct {
 	MessageData
@@ -43,45 +47,37 @@ type Message struct {
 	Lost       bool
 	VersionSeq uint64
 	LastSender string
+	InvokeId   int64
 }
 
 func (m *Message) Print() string {
-	var typeStr string
-	switch m.Type {
-	case HeartBeat:
-		typeStr = "HeartBeat"
-	case CostRequest:
-		typeStr = "CostRequest"
-	case CostAck:
-		typeStr = "CostAck"
-	case Quit:
-		typeStr = "Quit"
-	case Hello:
-		typeStr = "Hello"
-	case TcpRegister:
-		typeStr = "TcpRegister"
-	default:
-		typeStr = "Unknown"
-	}
-
 	return fmt.Sprintf(
-		"\n[Message]\n"+
-			"  Type       : %s\n"+
-			"  Data       : %s\n"+
-			"  From       : %s\n"+
-			"  To         : %s\n"+
-			"  Route      : %s\n"+
-			"  TTL        : %d\n"+
-			"  Lost       : %v\n"+
-			"  VersionSeq : %d\n",
-		typeStr,
+		`[Message]
+  Type       : %v
+  Data       : %s
+  Entity     : %s
+  BundleTo   : %v
+  From       : %s
+  To         : %s
+  Route      : %s
+  TTL        : %d
+  Lost       : %v
+  VersionSeq : %d
+  LastSender : %s
+  InvokeId   : %d
+`,
+		m.Type,
 		m.Data,
+		m.Entity,
+		m.BundleTo,
 		m.From,
 		m.To,
 		m.Route,
 		m.TTL,
 		m.Lost,
 		m.VersionSeq,
+		m.LastSender,
+		m.InvokeId,
 	)
 }
 
