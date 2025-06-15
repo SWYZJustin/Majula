@@ -4,7 +4,7 @@
 
 Firelink is designed to be extensible and suitable for educational, experimental, or lightweight distributed applications. It enables nodes to discover each other, exchange topic-based messages, and maintain up-to-date routing and subscription tables.
 
-It can be served as an idea reference and it keeps updating.
+It can be served as an idea reference and it keeps updating. (Just for fun :)
 
 ## Features
 
