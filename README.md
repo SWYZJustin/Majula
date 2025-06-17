@@ -1,37 +1,17 @@
 # Firelink
 
-**Firelink** is a lightweight, modular, and decentralized messaging system implemented in Go. It provides a distributed pub-sub architecture that supports automatic routing, peer-to-peer communication, and subscription propagation across the network.
+**Firelink** is a light weight system that will enable peer-to-peer connection and message passing. It will be able to support topic-subscription (already), RPC (already), FRP (not yet) and nginx ( partial functionalities, not yet).
 
-Firelink is designed to be extensible and suitable for educational, experimental, or lightweight distributed applications. It enables nodes to discover each other, exchange topic-based messages, and maintain up-to-date routing and subscription tables.
+Next goal: Communication between client and node to separate them apart && TCP message handling (sequence...)
 
-It can be served as an idea reference and it keeps updating. (Just for fun :)
+## Installation & Running
 
-## Features
-
-- **Decentralized architecture**: Each node maintains its own routing and link-state information.
-- **Topic-based publish/subscribe**: Nodes can publish messages to topics and subscribe with client-defined callbacks.
-- **Dynamic routing table construction**: Based on link cost and heartbeat propagation.
-- **Flood-based subscription awareness**: Topic subscriptions are propagated periodically to ensure consistency.
-- **TCP-based transport**: Nodes communicate over TCP using a pluggable channel abstraction.
-- **Reliable message delivery**: Retry mechanisms are implemented for transient message delivery failures.
-- **Extensible CLI**: A command-line interface allows interaction with the network during runtime.
-
-## Installation
-
-Ensure you have Go installed (version 1.18+ recommended).
+Ensure you have Go installed
 
 ```bash
-git clone <your-firelink-repo>
-cd firelink
-go build -o firelink
+go build
+./Firelink.exe
 ```
 
-## Running
-
-In the current version, directly run the compiled Firelink.exe after building the project.
-
-
-
-# Update 2025/6/16
-
-Add the RPC functionality to this system, allowing client to call function remotely (untested)
+## Code
+If you want to take a look at the code, check **Node.go, Channel.go, TCPChannelWorker.go, RPC.go**, almost all the important elements are inside those files.
