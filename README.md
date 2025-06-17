@@ -4,7 +4,7 @@
 
 Firelink is designed to be extensible and suitable for educational, experimental, or lightweight distributed applications. It enables nodes to discover each other, exchange topic-based messages, and maintain up-to-date routing and subscription tables.
 
-It can be served as an idea reference and it keeps updating.
+It can be served as an idea reference and it keeps updating. (Just for fun :)
 
 ## Features
 
@@ -29,3 +29,9 @@ go build -o firelink
 ## Running
 
 In the current version, directly run the compiled Firelink.exe after building the project.
+
+
+
+# Update 2025/6/16
+
+Add the RPC functionality to this system, allowing client to call function remotely (untested)
