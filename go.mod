@@ -1,4 +1,4 @@
-module Firelink
+module Majula
 
 go 1.23.0
 
