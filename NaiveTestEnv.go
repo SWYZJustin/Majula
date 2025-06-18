@@ -55,13 +55,12 @@ func (e *Env) AddClientNode(nodeID string, remoteAddr string) error {
 	}
 
 	node := NewNode(nodeID)
-	localAddr := "127.0.0.1:0"
 	channelID := fmt.Sprintf("%s->%s", nodeID, remoteAddr)
 
 	worker := NewTcpConnection(
 		channelID,
 		true, // isClient
-		localAddr,
+		"",
 		remoteAddr,
 		nil,
 		defaultMaxFrameSize,
