@@ -52,15 +52,15 @@ quickstart server <nodeID> <addr>
 
 ---
 
-## Managing Clients [Not suggested, only for test uses]
+## Managing Clients
 
-### Add a Client
+### Add a Client [Not suggested, only for test uses, same for the next several commands]
 
 ```bash
 addclient <clientName>
 ```
 
-### Connect Client to Node [Not suggested, only for test uses]
+### Connect Client to Node
 
 ```bash
 connectclient <clientName> <nodeID>
