@@ -34,9 +34,15 @@ start server|client <nodeID> <addr> [ws=<port>]
 
 * `nodeID`: Unique identifier for the node.
 * `listenAddr`/`remoteAddr`: TCP address such as `127.0.0.1:8001`.
-* `ws=<port>`: (optional) Starts a WebSocket server on the specified port.
+* `ws=<port>`: (suggested) Starts a WebSocket server on the specified port, it will enable websocket or http connection to the system.
+The most suggested way to create a node is to use the websocket connection. It will allow you to access a node with a remote client.
 
-### Quickstart
+
+
+### Quickstart [Not suggested, only for test uses]
+
+Quickstart, following with the local client creation, are only used for test at the beginning of the development. These commands could be skipped.
+But if you are interested in doing a test, feel free to use them.
 
 Creates a node, a client connected to it, and logs in:
 
@@ -46,7 +52,7 @@ quickstart server <nodeID> <addr>
 
 ---
 
-## Managing Clients
+## Managing Clients [Not suggested, only for test uses]
 
 ### Add a Client
 
@@ -54,7 +60,7 @@ quickstart server <nodeID> <addr>
 addclient <clientName>
 ```
 
-### Connect Client to Node
+### Connect Client to Node [Not suggested, only for test uses]
 
 ```bash
 connectclient <clientName> <nodeID>
@@ -83,7 +89,9 @@ exit                        # Exit client session
 
 ---
 
-## WebSocket Client Mode
+## WebSocket Client Mode [suggested]
+
+As described above, currently the more suggested way is to use a web client. You could either creating a websocket client or using post or get access.
 
 You can run a WebSocket client session with:
 
@@ -159,10 +167,12 @@ Current features:
 
 Planned features:
 
+* Message sequencing guarantees (under progress) (TCP style)
 * Functional Reactive Programming (FRP)
 * Partial NGINX behavior emulation
-* Message sequencing guarantees (TCP style)
-
+* apis exported to increase functionalities of the system
+* More improvements on the safety and efficiency
 ---
 
-For any contribution or question, feel free to open an issue or contact the repository maintainer.
+For any contribution or question, feel free to open an issue or contact the repository maintainer (me)
+Enjoy
