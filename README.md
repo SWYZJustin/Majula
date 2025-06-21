@@ -152,7 +152,8 @@ Most core functionalities are defined in:
 * `Channel.go` – Message relaying logic
 * `TCPChannelWorker.go` – TCP communication
 * `RPC.go` – Remote procedure call framework
-* `Server.go` – WebSocket/HTTP client integration
+* `MajulaServer.go & MajulaClient.go` – WebSocket/HTTP client integration
+* `SimpleLink.go` – user command prompt
 
 ---
 
