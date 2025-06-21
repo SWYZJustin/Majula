@@ -1,6 +1,8 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Env struct {
 	nodes   map[string]*Node
@@ -14,7 +16,7 @@ func NewEnv() *Env {
 	}
 }
 
-func (e *Env) AddServer(nodeID string, bindAddr string) error {
+func (e *Env) AddServer(nodeID string, bindAddr string, wsPort string) error {
 	if _, exists := e.nodes[nodeID]; exists {
 		return fmt.Errorf("node %s already exists", nodeID)
 	}
@@ -43,13 +45,17 @@ func (e *Env) AddServer(nodeID string, bindAddr string) error {
 	node.register()
 	registerTestRpc(node)
 
+	if wsPort != "" {
+		go startUnifiedServer(node, wsPort)
+	}
+
 	e.nodes[nodeID] = node
 	fmt.Printf("[Env] Server node '%s' started at %s\n", nodeID, bindAddr)
 	return nil
 }
 
 // Add a client node (connects to a server node)
-func (e *Env) AddClientNode(nodeID string, remoteAddr string) error {
+func (e *Env) AddClientNode(nodeID string, remoteAddr string, wsPort string) error {
 	if _, exists := e.nodes[nodeID]; exists {
 		return fmt.Errorf("node %s already exists", nodeID)
 	}
@@ -82,9 +88,22 @@ func (e *Env) AddClientNode(nodeID string, remoteAddr string) error {
 	node.register()
 	registerTestRpc(node)
 
+	if wsPort != "" {
+		go startUnifiedServer(node, wsPort)
+	}
+
 	e.nodes[nodeID] = node
 	fmt.Printf("[Env] Client node '%s' connected to %s\n", nodeID, remoteAddr)
 	return nil
+}
+
+func startUnifiedServer(node *Node, wsPort string) {
+	server := NewServer(node)
+	router := setupRoutes(server)
+	err := router.Run(":" + wsPort)
+	if err != nil {
+		fmt.Printf("Server server failed to start on port %s: %v\n", wsPort, err)
+	}
 }
 
 func (e *Env) AddClient(clientID string) error {

@@ -23,6 +23,7 @@ const (
 	RpcRequest
 	RpcResponse
 	RpcServiceFlood
+	P2PMessage
 )
 
 func checkBroadCast(pType MessageType) bool {

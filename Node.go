@@ -55,6 +55,9 @@ type Node struct { // Node
 
 	clientIDs      []string
 	clientIDsMutex sync.RWMutex
+
+	wsServers      []*Server
+	wsServersMutex sync.RWMutex
 }
 
 type SubscriptionInfo struct {
@@ -129,6 +132,21 @@ func (node *Node) removeLocalSub(pTopic string, pClientName string) {
 	}
 }
 
+func (node *Node) ClearSubClient(clientID string) {
+	node.mySubsMutex.RLock()
+	var topics []string
+	for topic, subs := range node.mySubs {
+		if _, ok := subs[clientID]; ok {
+			topics = append(topics, topic)
+		}
+	}
+	node.mySubsMutex.RUnlock()
+
+	for _, topic := range topics {
+		node.removeLocalSub(topic, clientID)
+	}
+}
+
 func (node *Node) handleTopicInit(msg *Message) {
 	topic := msg.Data
 	sender := msg.From
@@ -190,6 +208,13 @@ func (node *Node) handleTopicExit(msg *Message) {
 
 func (node *Node) publishOnTopic(pTopic string, pMessage string) {
 	node.DebugPrint("publishOnTopic", fmt.Sprintf("topic=%s msg=%s", pTopic, pMessage))
+	node.mySubsMutex.RLock()
+	if subs, ok := node.mySubs[pTopic]; ok {
+		for _, cb := range subs {
+			go cb(pTopic, node.ID, node.ID, []byte(pMessage))
+		}
+	}
+	node.mySubsMutex.RUnlock()
 	node.totalSubsMutex.RLock()
 	if node.totalSubs == nil {
 		return
@@ -362,6 +387,9 @@ func NewNodeWithChannel(pID string, pChannels map[string]*Channel) *Node {
 
 		clientIDs:      make([]string, 0),
 		clientIDsMutex: sync.RWMutex{},
+
+		wsServers:      make([]*Server, 0),
+		wsServersMutex: sync.RWMutex{},
 	}
 	return &aNode
 }
@@ -401,6 +429,9 @@ func NewNode(pID string) *Node {
 
 		clientIDs:      make([]string, 0),
 		clientIDsMutex: sync.RWMutex{},
+
+		wsServers:      make([]*Server, 0),
+		wsServersMutex: sync.RWMutex{},
 	}
 	return &aNode
 }
@@ -455,6 +486,7 @@ func (node *Node) register() {
 	go node.startSubscriptionFloodLoop()
 	go node.startCleanRpcCacheLoop()
 	go node.startPeriodicRpcFlood()
+	go node.RegisterDefaultRPCs()
 }
 
 // 使一个node退出
@@ -462,6 +494,12 @@ func (node *Node) quit() {
 	node.DebugPrint("quit", "start")
 	node.sendQuit()
 	node.HBcancel()
+	node.wsServersMutex.Lock()
+	defer node.wsServersMutex.Unlock()
+	for _, server := range node.wsServers {
+		server.Shutdown()
+	}
+	node.wsServers = nil
 }
 
 // 将一条消息发送，可指定channelId，不然就是从路由表找
@@ -646,6 +684,36 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 			node.DebugPrint("onRecv-rpcResponse", "start")
 			go node.handleRpcResponse(msg)
 			return
+
+		case P2PMessage:
+			var payload map[string]interface{}
+			err := json.Unmarshal([]byte(msg.Data), &payload)
+			if err != nil {
+				node.DebugPrint("onRecv-p2pMessage", "parseError")
+				return
+			}
+
+			targetClientID, ok := payload["target_client"].(string)
+			if !ok {
+				node.DebugPrint("onRecv-p2pMessage", "missing target_client")
+				return
+			}
+
+			node.wsServersMutex.RLock()
+			defer node.wsServersMutex.RUnlock()
+
+			for _, wsServer := range node.wsServers {
+				err := wsServer.SendToClient(targetClientID, MajulaPackage{
+					Method: "PRIVATE_MESSAGE",
+					Args: map[string]interface{}{
+						"from_node": msg.From,
+						"message":   payload["payload"],
+					},
+				})
+				if err == nil {
+					break
+				}
+			}
 
 		default:
 			//node.DebugPrint("onRecv-Message", msg.Data)
@@ -1176,8 +1244,6 @@ func (node *Node) AddClient(clientID string) {
 
 func (node *Node) RemoveClient(clientID string) {
 	node.clientIDsMutex.Lock()
-	defer node.clientIDsMutex.Unlock()
-
 	newList := node.clientIDs[:0]
 	for _, id := range node.clientIDs {
 		if id != clientID {
@@ -1185,6 +1251,25 @@ func (node *Node) RemoveClient(clientID string) {
 		}
 	}
 	node.clientIDs = newList
+	node.clientIDsMutex.Unlock()
+
+	node.ClearSubClient(clientID)
+	node.UnregisterRpcServicesByClient(clientID)
+}
+
+func (node *Node) UnregisterRpcServicesByClient(clientID string) {
+	node.rpcFuncsMutex.Lock()
+	defer node.rpcFuncsMutex.Unlock()
+
+	for funcName, providers := range node.rpcFuncs {
+		if _, ok := providers[clientID]; ok {
+			delete(providers, clientID)
+			log.Printf("Unregistered RPC: %s by client %s", funcName, clientID)
+		}
+		if len(providers) == 0 {
+			delete(node.rpcFuncs, funcName)
+		}
+	}
 }
 
 func (node *Node) GetClientIDs() []string {
@@ -1208,4 +1293,10 @@ func (node *Node) PrintClients() {
 	for _, id := range node.clientIDs {
 		fmt.Printf("  - %s\n", id)
 	}
+}
+
+func (n *Node) RegisterWSServer(server *Server) {
+	n.wsServersMutex.Lock()
+	defer n.wsServersMutex.Unlock()
+	n.wsServers = append(n.wsServers, server)
 }

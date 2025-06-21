@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -154,6 +155,10 @@ func (this *Node) findTargetLocalRpcService(funcName string, provider string) *R
 }
 
 func (node *Node) makeRpcRequest(peer string, targetFuncProvider string, fun string, params map[string]interface{}) (interface{}, bool) {
+	if peer == node.ID {
+		return node.invokeLocalRpc(targetFuncProvider, fun, params)
+	}
+
 	node.activeStubsMutex.Lock()
 	node.addInvokedId()
 	cId := atomic.LoadInt64(&node.invokedId)
@@ -224,6 +229,36 @@ func (node *Node) makeRpcRequest(peer string, targetFuncProvider string, fun str
 		node.DebugPrint("makeRpcRequest_"+fun+"_"+peer, "timeout")
 		return nil, false
 	}
+}
+
+func (node *Node) invokeLocalRpc(provider string, fun string, params map[string]interface{}) (interface{}, bool) {
+	node.DebugPrint("invokeLocalRpc", fmt.Sprintf("invoking local RPC: fun=%s, provider=%s", fun, provider))
+
+	targetFunc := node.findTargetLocalRpcService(fun, provider)
+	if targetFunc == nil {
+		node.DebugPrint("invokeLocalRpc", fmt.Sprintf("function '%s' with provider '%s' not found", fun, provider))
+		return map[string]interface{}{"error": "function not found"}, false
+	}
+	if targetFunc.Callback == nil {
+		node.DebugPrint("invokeLocalRpc", fmt.Sprintf("function '%s' has no callback", fun))
+		return map[string]interface{}{"error": "callback not defined"}, false
+	}
+
+	var result interface{}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				node.DebugPrint("invokeLocalRpc", fmt.Sprintf("panic occurred during callback execution: %v", r))
+				result = map[string]interface{}{"error": "internal error"}
+			}
+		}()
+
+		node.DebugPrint("invokeLocalRpc", fmt.Sprintf("calling callback: fun=%s, provider=%s", fun, provider))
+		result = targetFunc.Callback(fun, params, node.ID, node.ID, 0)
+		node.DebugPrint("invokeLocalRpc", fmt.Sprintf("callback completed: result=%+v", result))
+	}()
+
+	return result, true
 }
 
 func (node *Node) handleRpcRequest(msg *Message) {
@@ -417,4 +452,77 @@ func (node *Node) startPeriodicRpcFlood() {
 			}
 		}
 	}()
+}
+
+func (node *Node) RegisterDefaultRPCs() {
+	// 加法
+	node.registerRpcService("add", "init", RPC_FuncInfo{Note: "Adds two numbers"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		a, _ := params["a"].(float64)
+		b, _ := params["b"].(float64)
+		return map[string]interface{}{"sum": a + b}
+	})
+
+	// 回显
+	node.registerRpcService("echo", "init", RPC_FuncInfo{Note: "Echo back parameters"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		return map[string]interface{}{"echo": params}
+	})
+
+	// 当前时间
+	node.registerRpcService("time", "init", RPC_FuncInfo{Note: "Returns current server time"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		return map[string]interface{}{"time": time.Now().Format(time.RFC3339)}
+	})
+
+	// Whoami
+	node.registerRpcService("whoami", "init", RPC_FuncInfo{Note: "Returns node ID"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		return map[string]interface{}{"id": node.ID}
+	})
+
+	// 长文本测试
+	node.registerRpcService("longtext", "init", RPC_FuncInfo{Note: "Returns long test string"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		return map[string]interface{}{"data": strings.Repeat("HelloWorld ", 100)}
+	})
+
+	// 随机整数
+	node.registerRpcService("randint", "init", RPC_FuncInfo{Note: "Returns a random int between min and max"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		min, _ := params["min"].(float64)
+		max, _ := params["max"].(float64)
+		if max < min {
+			min, max = max, min
+		}
+		n := int(min) + int(time.Now().UnixNano()%int64(max-min+1))
+		return map[string]interface{}{"value": n}
+	})
+
+	// 反转字符串
+	node.registerRpcService("reverse", "init", RPC_FuncInfo{Note: "Reverses a string"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		s, _ := params["s"].(string)
+		runes := []rune(s)
+		for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+			runes[i], runes[j] = runes[j], runes[i]
+		}
+		return map[string]interface{}{"reversed": string(runes)}
+	})
+
+	// 列出当前注册的 RPC 在provider下的函数
+	node.registerRpcService("allrpcs", "init", RPC_FuncInfo{Note: "List RPCs by provider"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		provider, ok := params["rpcProvider"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing or invalid 'provider' parameter"}
+		}
+
+		node.rpcFuncsMutex.RLock()
+		defer node.rpcFuncsMutex.RUnlock()
+
+		funcs := []map[string]string{}
+		for funName, provMap := range node.rpcFuncs {
+			if fn, exists := provMap[provider]; exists {
+				funcs = append(funcs, map[string]string{
+					"name": funName,
+					"note": fn.Info.Note,
+				})
+			}
+		}
+		return funcs
+	})
+
 }

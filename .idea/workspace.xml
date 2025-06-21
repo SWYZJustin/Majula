@@ -4,11 +4,31 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="" />
+    <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/MajulaClient.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/MajulaServer.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Majula.exe" beforeDir="false" afterPath="$PROJECT_DIR$/Majula.exe" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Message.go" beforeDir="false" afterPath="$PROJECT_DIR$/Message.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/NaiveTestEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/NaiveTestEnv.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/Node.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/Node_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/RPC.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/SimpleLink.go" beforeDir="false" afterPath="$PROJECT_DIR$/SimpleLink.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Go File" />
+      </list>
+    </option>
   </component>
   <component name="GOROOT" url="file://D:/Go" />
   <component name="Git.Settings">
@@ -25,6 +45,13 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "DefaultGoTemplateProperty": "Go File",
+    "Go Test.TestCallAllRpcsViaWs in Majula (1).executor": "Run",
+    "Go Test.TestCallAllRpcsViaWs in Majula.executor": "Run",
+    "Go Test.TestClientServerCommunication in Majula.executor": "Run",
+    "Go Test.TestRpcCommunication in Majula.executor": "Run",
+    "Go Test.TestWebSocketRpc in Majula.executor": "Run",
+    "Go Test.TestWebSocketRpcCallToNodeRegisteredService in Majula.executor": "Run",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.GoLinterPluginOnboarding": "true",
     "RunOnceActivity.GoLinterPluginStorageMigration": "true",
@@ -37,12 +64,83 @@
     "git-widget-placeholder": "master",
     "go.import.settings.migrated": "true",
     "go.sdk.automatically.set": "true",
-    "last_opened_file_path": "C:/Users/Justi",
+    "last_opened_file_path": "E:/GolangProjects/Majula",
     "node.js.detected.package.eslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "nodejs_package_manager_path": "npm"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="E:\GolangProjects\Majula" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Go Test.TestCallAllRpcsViaWs in Majula (1)">
+    <configuration name="TestCallAllRpcsViaWs in Majula (1)" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="Majula" />
+      <working_directory value="$PROJECT_DIR$" />
+      <kind value="PACKAGE" />
+      <package value="Majula" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
+      <pattern value="^\QTestCallAllRpcsViaWs\E$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="TestCallAllRpcsViaWs in Majula" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="Majula" />
+      <working_directory value="$PROJECT_DIR$" />
+      <kind value="PACKAGE" />
+      <package value="Majula" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
+      <pattern value="^\QTestCallAllRpcsViaWs\E$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="TestRpcCommunication in Majula" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="Majula" />
+      <working_directory value="$PROJECT_DIR$" />
+      <kind value="PACKAGE" />
+      <package value="Majula" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
+      <pattern value="^\QTestRpcCommunication\E$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="TestWebSocketRpc in Majula" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="Majula" />
+      <working_directory value="$PROJECT_DIR$" />
+      <kind value="PACKAGE" />
+      <package value="Majula" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
+      <pattern value="^\QTestWebSocketRpc\E$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="TestWebSocketRpcCallToNodeRegisteredService in Majula" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="Majula" />
+      <working_directory value="$PROJECT_DIR$" />
+      <kind value="PACKAGE" />
+      <package value="Majula" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
+      <pattern value="^\QTestWebSocketRpcCallToNodeRegisteredService\E$" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Go Test.TestCallAllRpcsViaWs in Majula (1)" />
+        <item itemvalue="Go Test.TestCallAllRpcsViaWs in Majula" />
+        <item itemvalue="Go Test.TestWebSocketRpcCallToNodeRegisteredService in Majula" />
+        <item itemvalue="Go Test.TestWebSocketRpc in Majula" />
+        <item itemvalue="Go Test.TestRpcCommunication in Majula" />
+      </list>
+    </recent_temporary>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
