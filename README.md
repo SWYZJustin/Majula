@@ -4,6 +4,7 @@
 Majula is a lightweight peer-to-peer messaging framework supporting topic-subscription, RPC, and optional HTTP/WebSocket access. This guide introduces how to quickly get started with the system after building and running the application.
 
 Currently it's still under development. A lot of ideas have not been achieved to make it a usable system, especially, the apis are not provided perfectly and the functionalities are not fully achieved. So currently, it could only be seen as a toy program.
+
 ---
 
 ## Getting Started
