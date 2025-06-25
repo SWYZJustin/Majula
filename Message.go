@@ -24,6 +24,10 @@ const (
 	RpcResponse
 	RpcServiceFlood
 	P2PMessage
+	FRPData
+	FRPAck
+	FRPClose
+	FRPResendRequest
 )
 
 func checkBroadCast(pType MessageType) bool {

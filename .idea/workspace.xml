@@ -5,18 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/MajulaClient.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/MajulaServer.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/FRPStreamStub.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/FRPStubManager.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Majula.exe" beforeDir="false" afterPath="$PROJECT_DIR$/Majula.exe" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Message.go" beforeDir="false" afterPath="$PROJECT_DIR$/Message.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/NaiveTestEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/NaiveTestEnv.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/Node.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/Node_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/RPC.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/SimpleLink.go" beforeDir="false" afterPath="$PROJECT_DIR$/SimpleLink.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
