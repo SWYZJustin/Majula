@@ -5,10 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/FRPStreamStub.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/FRPStubManager.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/FRPStreamStub.go" beforeDir="false" afterPath="$PROJECT_DIR$/FRPStreamStub.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Message.go" beforeDir="false" afterPath="$PROJECT_DIR$/Message.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/Node.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/Node_test.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -41,6 +42,7 @@
     "Go Test.TestCallAllRpcsViaWs in Majula (1).executor": "Run",
     "Go Test.TestCallAllRpcsViaWs in Majula.executor": "Run",
     "Go Test.TestClientServerCommunication in Majula.executor": "Run",
+    "Go Test.TestFrpCommunicationBetweenNodes in Majula.executor": "Run",
     "Go Test.TestRpcCommunication in Majula.executor": "Run",
     "Go Test.TestWebSocketRpc in Majula.executor": "Run",
     "Go Test.TestWebSocketRpcCallToNodeRegisteredService in Majula.executor": "Run",
@@ -67,7 +69,7 @@
       <recent name="E:\GolangProjects\Majula" />
     </key>
   </component>
-  <component name="RunManager" selected="Go Test.TestCallAllRpcsViaWs in Majula (1)">
+  <component name="RunManager" selected="Go Test.TestFrpCommunicationBetweenNodes in Majula">
     <configuration name="TestCallAllRpcsViaWs in Majula (1)" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="Majula" />
       <working_directory value="$PROJECT_DIR$" />
@@ -90,7 +92,7 @@
       <pattern value="^\QTestCallAllRpcsViaWs\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="TestRpcCommunication in Majula" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="TestFrpCommunicationBetweenNodes in Majula" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="Majula" />
       <working_directory value="$PROJECT_DIR$" />
       <kind value="PACKAGE" />
@@ -98,7 +100,7 @@
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$" />
       <framework value="gotest" />
-      <pattern value="^\QTestRpcCommunication\E$" />
+      <pattern value="^\QTestFrpCommunicationBetweenNodes\E$" />
       <method v="2" />
     </configuration>
     <configuration name="TestWebSocketRpc in Majula" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
@@ -125,11 +127,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Go Test.TestFrpCommunicationBetweenNodes in Majula" />
         <item itemvalue="Go Test.TestCallAllRpcsViaWs in Majula (1)" />
         <item itemvalue="Go Test.TestCallAllRpcsViaWs in Majula" />
         <item itemvalue="Go Test.TestWebSocketRpcCallToNodeRegisteredService in Majula" />
         <item itemvalue="Go Test.TestWebSocketRpc in Majula" />
-        <item itemvalue="Go Test.TestRpcCommunication in Majula" />
       </list>
     </recent_temporary>
   </component>

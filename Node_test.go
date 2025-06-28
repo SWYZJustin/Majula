@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -445,4 +446,113 @@ func TestCallAllRpcsViaWs(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestFrpCommunicationBetweenNodes(t *testing.T) {
+
+	netConnectionAddr := "127.0.0.1:3000"
+
+	frpClientAddr := "127.0.0.1:23333"
+	frpServerAddr := "127.0.0.1:23337"
+
+	serverNode := NewNode("server")
+	clientA := NewNode("clientA")
+	clientB := NewNode("clientB")
+
+	serverWorker := NewTcpConnection("server", false, netConnectionAddr, "", nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
+	serverWorker.User = serverChannel
+	serverNode.addChannel(serverChannel)
+	serverNode.register()
+
+	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
+	clientAWorker.User = clientAChannel
+	clientAChannel.addChannelPeer("server")
+	clientA.addChannel(clientAChannel)
+	clientA.register()
+
+	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
+	clientBWorker.User = clientBChannel
+	clientBChannel.addChannelPeer("server")
+	clientB.addChannel(clientBChannel)
+	clientB.register()
+
+	time.Sleep(2 * time.Second)
+
+	code := "test-frp"
+
+	err := clientA.stubManager.RegisterFRPCode(code, frpClientAddr, "clientB", frpServerAddr)
+	if err != nil {
+		t.Fatal("Failed to register FRP on clientA:", err)
+	}
+	err = clientB.stubManager.RegisterFRPCode(code, frpClientAddr, "clientA", frpServerAddr)
+	if err != nil {
+		t.Fatal("Failed to register FRP on clientB:", err)
+	}
+
+	go func() {
+		ln, err := net.Listen("tcp", frpServerAddr)
+		if err != nil {
+			t.Fatalf("Failed to start listener: %v", err)
+		}
+		defer ln.Close()
+		fmt.Println("Before tcp server accept")
+		conn, err := ln.Accept()
+		fmt.Println("Succeed in tcp server accept")
+		if err != nil {
+			t.Fatalf("Failed to accept: %v", err)
+		}
+		defer conn.Close()
+
+		buf := make([]byte, 1024)
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				return
+			}
+			t.Logf("ClientB received: %s", string(buf[:n]))
+		}
+
+	}()
+
+	time.Sleep(1 * time.Second)
+
+	if err := clientA.stubManager.StartFRPListener(code, frpClientAddr); err != nil {
+		t.Fatalf("ClientA StartFRPListener failed: %v", err)
+	}
+
+	time.Sleep(1 * time.Second)
+
+	go func() {
+		conn, err := net.Dial("tcp", frpClientAddr)
+		if err != nil {
+			t.Fatalf("Dial on port 23333 failed: %v", err)
+			conn.Close()
+		}
+		for i := 0; i < 50; i++ {
+			conn.Write([]byte(fmt.Sprintf("msg-%d", i)))
+			time.Sleep(500 * time.Millisecond)
+		}
+		clientA.stubManager.CloseAllStubs()
+	}()
+
+	/*
+		if err := clientA.stubManager.RunFRPFromLocalStub(code); err != nil {
+			t.Fatalf("ClientA RunFRP failed: %v", err)
+		}
+		if err := clientB.stubManager.StartFRPListener(code, "localhost:9002"); err != nil {
+			t.Fatalf("ClientB StartFRPListener failed: %v", err)
+		}
+
+	*/
+
+	time.Sleep(5 * time.Second)
 }

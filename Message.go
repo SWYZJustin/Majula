@@ -92,3 +92,12 @@ func (m *Message) isImportant() bool {
 	}
 	return true
 }
+
+func (m *Message) isFrp() bool {
+	switch m.Type {
+	case FRPData, FRPAck, FRPClose, FRPResendRequest:
+		return true
+	default:
+		return false
+	}
+}

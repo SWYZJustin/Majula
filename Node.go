@@ -58,6 +58,8 @@ type Node struct { // Node
 
 	wsServers      []*Server
 	wsServersMutex sync.RWMutex
+
+	stubManager *StubManager
 }
 
 type SubscriptionInfo struct {
@@ -391,6 +393,7 @@ func NewNodeWithChannel(pID string, pChannels map[string]*Channel) *Node {
 		wsServers:      make([]*Server, 0),
 		wsServersMutex: sync.RWMutex{},
 	}
+	aNode.initStubManager()
 	return &aNode
 }
 
@@ -433,6 +436,7 @@ func NewNode(pID string) *Node {
 		wsServers:      make([]*Server, 0),
 		wsServersMutex: sync.RWMutex{},
 	}
+	aNode.initStubManager()
 	return &aNode
 }
 
@@ -487,6 +491,8 @@ func (node *Node) register() {
 	go node.startCleanRpcCacheLoop()
 	go node.startPeriodicRpcFlood()
 	go node.RegisterDefaultRPCs()
+	go node.RegisterFRPRPCHandler()
+	go node.RegisterFileTransferRPCs()
 }
 
 // 使一个node退出
@@ -643,6 +649,10 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 
 	// 如果消息是发给本node的
 	if msg.To == node.ID {
+		if msg.isFrp() {
+			go node.stubManager.handleFrpMessages(msg)
+		}
+
 		switch msg.MessageData.Type {
 		case Quit:
 			node.DebugPrint("onRecv-quit", "start")

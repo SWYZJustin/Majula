@@ -10,7 +10,13 @@ import (
 	"time"
 )
 
+func (s *StreamStub) DebugPrint(name string, message string) {
+	return
+	fmt.Printf("[%s: %s] %s\n", s.myId, name, message)
+}
+
 type WindowBuffer struct {
+	mu         sync.Mutex
 	startSeq   int64
 	size       int
 	data       [][]byte
@@ -27,10 +33,13 @@ func NewWindowBuffer(startSeq int64, size int) *WindowBuffer {
 		filled:     make([]bool, size),
 		retryCount: make([]int, size),
 		sendTime:   make([]time.Time, size),
+		mu:         sync.Mutex{},
 	}
 }
 
 func (wb *WindowBuffer) Put(seq int64, value []byte) bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	if seq < wb.startSeq || seq >= wb.startSeq+int64(wb.size) {
 		return false
 	}
@@ -43,6 +52,8 @@ func (wb *WindowBuffer) Put(seq int64, value []byte) bool {
 }
 
 func (wb *WindowBuffer) Get(seq int64) ([]byte, bool) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	if seq < wb.startSeq || seq >= wb.startSeq+int64(wb.size) {
 		return nil, false
 	}
@@ -54,6 +65,8 @@ func (wb *WindowBuffer) Get(seq int64) ([]byte, bool) {
 }
 
 func (wb *WindowBuffer) Advance() bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	index := int(0)
 	if !wb.filled[index] {
 		return false
@@ -65,6 +78,8 @@ func (wb *WindowBuffer) Advance() bool {
 }
 
 func (wb *WindowBuffer) IsFilled(seq int64) bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	offset := seq - wb.startSeq
 	if offset < 0 || offset >= int64(wb.size) {
 		return false
@@ -73,6 +88,8 @@ func (wb *WindowBuffer) IsFilled(seq int64) bool {
 }
 
 func (wb *WindowBuffer) GetWithMeta(seq int64) ([]byte, int, time.Time, bool) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	if seq < wb.startSeq || seq >= wb.startSeq+int64(wb.size) {
 		return nil, 0, time.Time{}, false
 	}
@@ -84,6 +101,8 @@ func (wb *WindowBuffer) GetWithMeta(seq int64) ([]byte, int, time.Time, bool) {
 }
 
 func (wb *WindowBuffer) IncrementRetry(seq int64) {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	if seq < wb.startSeq || seq >= wb.startSeq+int64(wb.size) {
 		return
 	}
@@ -93,21 +112,27 @@ func (wb *WindowBuffer) IncrementRetry(seq int64) {
 }
 
 func (wb *WindowBuffer) RemoveUpTo(seq int64) {
-	for wb.startSeq <= seq {
-		index := int((wb.startSeq - wb.startSeq) % int64(wb.size))
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	for s := wb.startSeq; s <= seq; s++ {
+		index := int((s - wb.startSeq) % int64(wb.size))
 		wb.data[index] = nil
 		wb.filled[index] = false
 		wb.retryCount[index] = 0
 		wb.sendTime[index] = time.Time{}
-		wb.startSeq++
 	}
+	wb.startSeq = seq + 1
 }
 
 func (wb *WindowBuffer) IsFull() bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	return wb.Count() >= wb.size
 }
 
 func (wb *WindowBuffer) Count() int {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	count := 0
 	for _, filled := range wb.filled {
 		if filled {
@@ -118,6 +143,8 @@ func (wb *WindowBuffer) Count() int {
 }
 
 func (wb *WindowBuffer) CanPut(seq int64) bool {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
 	return seq >= wb.startSeq && seq < wb.startSeq+int64(wb.size)
 }
 
@@ -138,6 +165,10 @@ type FRPDataPayload struct {
 	Data         []byte `json:"data"`
 }
 
+func (p FRPDataPayload) String() string {
+	return fmt.Sprintf("FRPDataPayload{TargetStubID: %s, Seq: %d, Data: %q}", p.TargetStubID, p.Seq, p.Data)
+}
+
 type FRPAckPayload struct {
 	TargetStubID string `json:"stub_id"`
 	Ack          int64  `json:"ack"`
@@ -150,6 +181,23 @@ type FRPResendRequestPayload struct {
 
 type FRPCloseAckPayload struct {
 	TargetStubID string `json:"stub_id"`
+}
+
+func (p FRPAckPayload) String() string {
+	return fmt.Sprintf("FRPAckPayload{TargetStubID: %s, Ack: %d}", p.TargetStubID, p.Ack)
+}
+
+func (p FRPResendRequestPayload) String() string {
+	return fmt.Sprintf("FRPResendRequestPayload{TargetStubID: %s, Seq: %d}", p.TargetStubID, p.Seq)
+}
+
+func (p FRPCloseAckPayload) String() string {
+	return fmt.Sprintf("FRPCloseAckPayload{TargetStubID: %s}", p.TargetStubID)
+}
+
+type frpMessage struct {
+	msgType MessageType
+	payload []byte
 }
 
 type StreamStub struct {
@@ -191,18 +239,26 @@ type StreamStub struct {
 	delayedResend bool
 
 	delayedResendRequest bool
+
+	inChan chan frpMessage
 }
 
 func (stub *StreamStub) sendDataLoop(ctx context.Context) {
+	stub.DebugPrint("startSendDataLoop", stub.myId)
 	buf := make([]byte, 65535)
 	for {
 		select {
 		case <-ctx.Done():
+			fmt.Println("send close message due to sendDataLoop cancelled")
 			stub.sendCloseMessage()
 			return
 		default:
 			n, err := stub.conn.Read(buf)
 			if err != nil {
+				fmt.Println("send close message due to error in read the conn")
+				fmt.Println("The error got is: ")
+				fmt.Println(err)
+				fmt.Println("End of Error")
 				stub.sendCloseMessage()
 				return
 			}
@@ -218,6 +274,7 @@ func (stub *StreamStub) sendDataLoop(ctx context.Context) {
 					if seq < stub.sendWindow.startSeq {
 						fmt.Printf("sendSeq %d is behind window start %d, aborting\n", seq, stub.sendWindow.startSeq)
 						stub.sendWindowLock.Unlock()
+						fmt.Println("send close message due to send window seq problem")
 						stub.sendCloseMessage()
 						return
 					}
@@ -250,6 +307,9 @@ func (stub *StreamStub) sendData(seq int64, data []byte) {
 		TTL:        100,
 		LastSender: stub.myNodeId,
 	}
+
+	stub.DebugPrint("stub "+stub.myId+"sendData", msg.Print())
+
 	go stub.node.sendTo(stub.peerNodeId, msg)
 }
 
@@ -257,8 +317,10 @@ func (stub *StreamStub) onData(content []byte) {
 	stub.lastActivityTime.Store(time.Now())
 	var payload FRPDataPayload
 	if err := json.Unmarshal(content, &payload); err != nil || payload.TargetStubID != stub.myId {
+		stub.DebugPrint("stub "+stub.myId+"onData", "data error")
 		return
 	}
+	stub.DebugPrint("stub "+stub.myId+"onData", payload.String())
 
 	stub.recvWindowLock.Lock()
 	defer stub.recvWindowLock.Unlock()
@@ -323,6 +385,7 @@ func (stub *StreamStub) sendAck() {
 		TTL:        100,
 		LastSender: stub.myNodeId,
 	}
+	stub.DebugPrint("stub "+stub.myId+"sendAck", ackMsg.Print())
 	stub.node.sendTo(stub.peerNodeId, ackMsg)
 }
 
@@ -330,8 +393,10 @@ func (stub *StreamStub) onAck(content []byte) {
 	stub.lastActivityTime.Store(time.Now())
 	var payload FRPAckPayload
 	if err := json.Unmarshal(content, &payload); err != nil || payload.TargetStubID != stub.myId {
+		stub.DebugPrint("stub "+stub.myId+"onAck", "data error")
 		return
 	}
+	stub.DebugPrint("stub "+stub.myId+"onAck", payload.String())
 	stub.sendWindowLock.Lock()
 	defer stub.sendWindowLock.Unlock()
 
@@ -343,7 +408,9 @@ func (stub *StreamStub) onAck(content []byte) {
 }
 
 func (stub *StreamStub) onClose() {
+	stub.DebugPrint("stub "+stub.myId+"close", "")
 	stub.cancel()
+	fmt.Println("conn close with onClose")
 	stub.conn.Close()
 }
 
@@ -357,6 +424,7 @@ func (stub *StreamStub) sendCloseMessage() {
 		To:   stub.peerNodeId,
 		TTL:  100,
 	}
+	stub.DebugPrint("stub "+stub.myId+"sendClose", msg.Print())
 	stub.node.sendTo(stub.peerNodeId, msg)
 }
 
@@ -391,6 +459,7 @@ func (stub *StreamStub) resendUnacked() {
 			if retries >= MAX_RETRY_COUNT {
 				fmt.Println("Too many retries, closing stream:", stub.myId)
 				stub.cancel()
+				fmt.Println("conn close due to too many retries")
 				stub.conn.Close()
 				return
 			}
@@ -410,7 +479,6 @@ func (stub *StreamStub) resendUnacked() {
 func NewStreamStub(node *Node, conn net.Conn, myId, peerNodeId, peerStubId, myNodeId string) *StreamStub {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	lock := sync.Mutex{}
 	stub := &StreamStub{
 		conn:       conn,
 		node:       node,
@@ -422,10 +490,10 @@ func NewStreamStub(node *Node, conn net.Conn, myId, peerNodeId, peerStubId, myNo
 		sendWindow: NewWindowBuffer(1, MAX_SEND_WINDOW_SIZE),
 
 		cancel:           cancel,
-		windowCond:       sync.NewCond(&lock),
 		recvSinceLastAck: 0,
 		lastAckTime:      time.Now(),
 		cancelCtx:        ctx,
+		sendWindowLock:   sync.Mutex{},
 
 		resendRequestedAt: make(map[int64]time.Time),
 		writeChan:         make(chan []byte, 1024),
@@ -433,15 +501,43 @@ func NewStreamStub(node *Node, conn net.Conn, myId, peerNodeId, peerStubId, myNo
 		fastConnect:          false,
 		delayedResend:        false,
 		delayedResendRequest: false,
+
+		ackMode: "immediate",
+
+		inChan: make(chan frpMessage, 1024),
 	}
 	stub.lastActivityTime.Store(time.Now())
 	stub.windowCond = sync.NewCond(&stub.sendWindowLock)
 
-	go stub.sendDataLoop(ctx)
-	go stub.writeLoop(ctx)
+	//go stub.sendDataLoop(ctx)
+	//go stub.writeLoop(ctx)
 	//go stub.idleMonitorLoop(ctx)
 
+	go stub.frpMessageLoop()
+
 	return stub
+}
+
+func (stub *StreamStub) frpMessageLoop() {
+	for {
+		select {
+		case <-stub.cancelCtx.Done():
+			return
+		case msg := <-stub.inChan:
+			switch msg.msgType {
+			case FRPData:
+				stub.onData(msg.payload)
+			case FRPAck:
+				stub.onAck(msg.payload)
+			case FRPResendRequest:
+				stub.onResendRequest(msg.payload)
+			case FRPClose:
+				stub.onClose()
+			default:
+				fmt.Println("Unknown FRP message type")
+			}
+		}
+	}
 }
 
 func (stub *StreamStub) sendResendRequest(seq int64) {
@@ -472,6 +568,7 @@ func (stub *StreamStub) sendResendRequest(seq int64) {
 		TTL:        100,
 		LastSender: stub.myNodeId,
 	}
+	stub.DebugPrint("stub "+stub.myId+"sendResendRequest", msg.Print())
 	stub.node.sendTo(stub.peerNodeId, msg)
 }
 
@@ -480,8 +577,10 @@ func (stub *StreamStub) onResendRequest(content []byte) {
 
 	var payload FRPResendRequestPayload
 	if err := json.Unmarshal(content, &payload); err != nil || payload.TargetStubID != stub.myId {
+		stub.DebugPrint("stub "+stub.myId+"onResendRequest", "data error")
 		return
 	}
+	stub.DebugPrint("stub "+stub.myId+"sendResendRequest", payload.String())
 	stub.sendWindowLock.Lock()
 	data, _, sentAt, ok := stub.sendWindow.GetWithMeta(payload.Seq)
 	stub.sendWindowLock.Unlock()
@@ -566,4 +665,12 @@ func (stub *StreamStub) setDelayedResend(status bool) {
 
 func (stub *StreamStub) setDelayedResendRequest(status bool) {
 	stub.delayedResendRequest = status
+}
+
+func (stub *StreamStub) startSendLoop() {
+	go stub.sendDataLoop(stub.cancelCtx)
+}
+
+func (stub *StreamStub) startRecvLoop() {
+	go stub.writeLoop(stub.cancelCtx)
 }
