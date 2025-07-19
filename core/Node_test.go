@@ -216,7 +216,7 @@ func TestClientServerCommunication(t *testing.T) {
 	msgBytes, _ := json.Marshal(registerMsg)
 	err = conn.WriteMessage(websocket.TextMessage, msgBytes)
 	if err != nil {
-		t.Fatalf("Failed to send register message: %v", err)
+		t.Fatalf("Failed to send Register message: %v", err)
 	}
 
 	time.AfterFunc(500*time.Millisecond, func() {
@@ -250,8 +250,8 @@ func TestRpcCommunication(t *testing.T) {
 	}
 	serverChannel := NewChannelFull("serverChannel", serverNode, serverWorker)
 	serverWorker.User = serverChannel
-	serverNode.addChannel(serverChannel)
-	serverNode.register()
+	serverNode.AddChannel(serverChannel)
+	serverNode.Register()
 
 	serverNode.registerRpcService("whoami", "default", RPC_FuncInfo{}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
 		return fmt.Sprintf("Hello from %s", to)
@@ -270,8 +270,8 @@ func TestRpcCommunication(t *testing.T) {
 	clientChannel := NewChannelFull("clientChannel", clientNode, clientWorker)
 	clientWorker.User = clientChannel
 	clientChannel.addChannelPeer("serverNode") // 明确 server 的 ID
-	clientNode.addChannel(clientChannel)
-	clientNode.register()
+	clientNode.AddChannel(clientChannel)
+	clientNode.Register()
 
 	// 3. 等待两边连接初始化、路由表生成
 	time.Sleep(2 * time.Second)
@@ -401,8 +401,8 @@ func TestCallAllRpcsViaWs(t *testing.T) {
 	}
 	channel := NewChannelFull("server-channel", serverNode, worker)
 	worker.User = channel
-	serverNode.addChannel(channel)
-	serverNode.register()
+	serverNode.AddChannel(channel)
+	serverNode.Register()
 
 	go func() {
 		r := gin.Default()
@@ -428,8 +428,8 @@ func TestCallAllRpcsViaWs(t *testing.T) {
 	clientChannel := NewChannelFull("client-channel", clientNode, clientWorker)
 	clientWorker.User = clientChannel
 	clientChannel.addChannelPeer("serverNode")
-	clientNode.addChannel(clientChannel)
-	clientNode.register()
+	clientNode.AddChannel(clientChannel)
+	clientNode.Register()
 
 	t.Log("Client Node connected to server")
 
@@ -475,8 +475,8 @@ func TestFrpCommunicationBetweenNodes(t *testing.T) {
 		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
 	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
 	serverWorker.User = serverChannel
-	serverNode.addChannel(serverChannel)
-	serverNode.register()
+	serverNode.AddChannel(serverChannel)
+	serverNode.Register()
 
 	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
@@ -484,8 +484,8 @@ func TestFrpCommunicationBetweenNodes(t *testing.T) {
 	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
 	clientAWorker.User = clientAChannel
 	clientAChannel.addChannelPeer("server")
-	clientA.addChannel(clientAChannel)
-	clientA.register()
+	clientA.AddChannel(clientAChannel)
+	clientA.Register()
 
 	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
@@ -493,8 +493,8 @@ func TestFrpCommunicationBetweenNodes(t *testing.T) {
 	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
 	clientBWorker.User = clientBChannel
 	clientBChannel.addChannelPeer("server")
-	clientB.addChannel(clientBChannel)
-	clientB.register()
+	clientB.AddChannel(clientBChannel)
+	clientB.Register()
 
 	time.Sleep(2 * time.Second)
 
@@ -502,11 +502,11 @@ func TestFrpCommunicationBetweenNodes(t *testing.T) {
 
 	err := clientA.StubManager.RegisterFRPWithCode(code, frpClientAddr, "clientB", frpServerAddr)
 	if err != nil {
-		t.Fatal("Failed to register FRP on clientA:", err)
+		t.Fatal("Failed to Register FRP on clientA:", err)
 	}
 	err = clientB.StubManager.RegisterFRPWithCode(code, frpClientAddr, "clientA", frpServerAddr)
 	if err != nil {
-		t.Fatal("Failed to register FRP on clientB:", err)
+		t.Fatal("Failed to Register FRP on clientB:", err)
 	}
 
 	go func() {
@@ -637,8 +637,8 @@ func TestFrpFileTransfer(t *testing.T) {
 		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
 	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
 	serverWorker.User = serverChannel
-	serverNode.addChannel(serverChannel)
-	serverNode.register()
+	serverNode.AddChannel(serverChannel)
+	serverNode.Register()
 
 	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
@@ -646,8 +646,8 @@ func TestFrpFileTransfer(t *testing.T) {
 	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
 	clientAWorker.User = clientAChannel
 	clientAChannel.addChannelPeer("server")
-	clientA.addChannel(clientAChannel)
-	clientA.register()
+	clientA.AddChannel(clientAChannel)
+	clientA.Register()
 
 	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
@@ -655,18 +655,18 @@ func TestFrpFileTransfer(t *testing.T) {
 	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
 	clientBWorker.User = clientBChannel
 	clientBChannel.addChannelPeer("server")
-	clientB.addChannel(clientBChannel)
-	clientB.register()
+	clientB.AddChannel(clientBChannel)
+	clientB.Register()
 
 	time.Sleep(2 * time.Second)
 
 	code := "test-frp-file"
 
 	if err := clientA.StubManager.RegisterFRPWithCode(code, frpClientAddr, "clientB", frpServerAddr); err != nil {
-		t.Fatalf("ClientA register FRP failed: %v", err)
+		t.Fatalf("ClientA Register FRP failed: %v", err)
 	}
 	if err := clientB.StubManager.RegisterFRPWithCode(code, frpClientAddr, "clientA", frpServerAddr); err != nil {
-		t.Fatalf("ClientB register FRP failed: %v", err)
+		t.Fatalf("ClientB Register FRP failed: %v", err)
 	}
 
 	srcFile := "test_input.txt"
@@ -712,8 +712,8 @@ func TestFrpDynamicTunnel(t *testing.T) {
 		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
 	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
 	serverWorker.User = serverChannel
-	serverNode.addChannel(serverChannel)
-	serverNode.register()
+	serverNode.AddChannel(serverChannel)
+	serverNode.Register()
 
 	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
@@ -721,8 +721,8 @@ func TestFrpDynamicTunnel(t *testing.T) {
 	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
 	clientAWorker.User = clientAChannel
 	clientAChannel.addChannelPeer("server")
-	clientA.addChannel(clientAChannel)
-	clientA.register()
+	clientA.AddChannel(clientAChannel)
+	clientA.Register()
 
 	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
@@ -730,8 +730,8 @@ func TestFrpDynamicTunnel(t *testing.T) {
 	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
 	clientBWorker.User = clientBChannel
 	clientBChannel.addChannelPeer("server")
-	clientB.addChannel(clientBChannel)
-	clientB.register()
+	clientB.AddChannel(clientBChannel)
+	clientB.Register()
 
 	time.Sleep(2 * time.Second)
 
@@ -792,8 +792,8 @@ func TestFrpDynamicFileTransfer(t *testing.T) {
 	serverNode := NewNode("server")
 	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
 	serverWorker.User = serverChannel
-	serverNode.addChannel(serverChannel)
-	serverNode.register()
+	serverNode.AddChannel(serverChannel)
+	serverNode.Register()
 
 	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
@@ -801,8 +801,8 @@ func TestFrpDynamicFileTransfer(t *testing.T) {
 	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
 	clientAWorker.User = clientAChannel
 	clientAChannel.addChannelPeer("server")
-	clientA.addChannel(clientAChannel)
-	clientA.register()
+	clientA.AddChannel(clientAChannel)
+	clientA.Register()
 
 	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
@@ -810,8 +810,8 @@ func TestFrpDynamicFileTransfer(t *testing.T) {
 	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
 	clientBWorker.User = clientBChannel
 	clientBChannel.addChannelPeer("server")
-	clientB.addChannel(clientBChannel)
-	clientB.register()
+	clientB.AddChannel(clientBChannel)
+	clientB.Register()
 
 	time.Sleep(2 * time.Second)
 

@@ -56,7 +56,7 @@ func (env *TcpEnv) addSimpleServer(name string) {
 
 	channel := NewChannelFull(name+"-channel", node, worker)
 	worker.User = channel
-	node.addChannel(channel)
+	node.AddChannel(channel)
 
 	env.Servers[name] = node
 	env.ServersAddr[name] = actualAddr
@@ -79,17 +79,17 @@ func (env *TcpEnv) addSimpleClient(name string, serverName string) {
 	channel := NewChannelFull(name+"-channel", node, worker)
 	worker.User = channel
 	channel.addChannelPeer(serverName)
-	node.addChannel(channel)
+	node.AddChannel(channel)
 
 	env.Clients[name] = node
 }
 
 func (env *TcpEnv) startAll() {
 	for _, node := range env.Servers {
-		go node.register()
+		go node.Register()
 	}
 	for _, node := range env.Clients {
-		go node.register()
+		go node.Register()
 	}
 }
 
@@ -105,10 +105,10 @@ func (env *TcpEnv) printAllRoutingTables() {
 
 func (env *TcpEnv) end() {
 	for _, node := range env.Servers {
-		node.quit()
+		node.Quit()
 	}
 	for _, node := range env.Clients {
-		node.quit()
+		node.Quit()
 	}
 
 	// Close all TcpChannelWorkers
@@ -150,5 +150,5 @@ func (env *TcpEnv) connectClientToServer(clientName, serverName string) {
 	worker.User = channel
 	channel.addChannelPeer(serverName)
 
-	clientNode.addChannel(channel)
+	clientNode.AddChannel(channel)
 }

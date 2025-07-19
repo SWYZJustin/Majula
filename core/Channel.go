@@ -95,11 +95,11 @@ func (channel *Channel) addChannelPeer(peerId string) {
 
 	now := time.Now()
 	if conn, exists := channel.ChannelPeers[peerId]; exists {
-		channel.DebugPrint("addChannel", "Update Channel Peer "+peerId)
+		channel.DebugPrint("AddChannel", "Update Channel Peer "+peerId)
 		conn.LastRecvTime = now
 		conn.LastSendTime = now
 	} else {
-		channel.DebugPrint("addChannel", "Add Channel Peer "+peerId)
+		channel.DebugPrint("AddChannel", "Add Channel Peer "+peerId)
 		channel.ChannelPeers[peerId] = &Connection{
 			LastRecvTime: now,
 			LastSendTime: now,

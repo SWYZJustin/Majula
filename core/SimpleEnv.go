@@ -35,7 +35,7 @@ func NewSimpleEnvEx(pNodes []string, pPairs []SimplePair) *SimpleEnv {
 			tChannel := NewChannel()
 			tChannel.setChannelWorker(tChannelWorker)
 			tChannelWorker.addChannelUser(connectedNode, tChannel)
-			aNode[connectedNode].addChannel(tChannel)
+			aNode[connectedNode].AddChannel(tChannel)
 			for _, n := range pPair.connectedNodes {
 				if n != connectedNode {
 					tChannel.addChannelPeer(n)
@@ -49,13 +49,13 @@ func NewSimpleEnvEx(pNodes []string, pPairs []SimplePair) *SimpleEnv {
 
 func (env *SimpleEnv) start() {
 	for _, node := range env.Nodes {
-		go node.register()
+		go node.Register()
 	}
 }
 
 func (env *SimpleEnv) quit() {
 	for _, node := range env.Nodes {
-		go node.quit()
+		go node.Quit()
 	}
 }
 
@@ -101,6 +101,6 @@ func (env *SimpleEnv) runOld() {
 
 func (env *SimpleEnv) show() {
 	for _, node := range env.Nodes {
-		node.printAllChannels()
+		node.PrintAllChannels()
 	}
 }

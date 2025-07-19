@@ -463,7 +463,7 @@ func (this *Node) setGlobalLinkVersion(newVersion int64) {
 }
 
 // 为一个Node添加一个Channel，channel的id是由node分配的
-func (node *Node) addChannel(pChannel *Channel) {
+func (node *Node) AddChannel(pChannel *Channel) {
 	channelID := fmt.Sprintf("%s-%d", node.ID, len(node.Channels)+1)
 	pChannel.ID = channelID
 	pChannel.HNode = node
@@ -471,14 +471,14 @@ func (node *Node) addChannel(pChannel *Channel) {
 }
 
 // 获取一个channel
-func (node *Node) getChannel(channelID string) *Channel {
+func (node *Node) GetChannel(channelID string) *Channel {
 	return node.Channels[channelID]
 }
 
-func (node *Node) printAllChannels() {
-	node.DebugPrint("printAllChannels", "start")
+func (node *Node) PrintAllChannels() {
+	node.DebugPrint("PrintAllChannels", "start")
 	for _, channel := range node.Channels {
-		node.DebugPrint("printAllChannels-each", channel.ID)
+		node.DebugPrint("PrintAllChannels-each", channel.ID)
 	}
 }
 
@@ -488,8 +488,8 @@ func (node *Node) addMessageCounter() {
 }
 
 // 注册一个node，即让它开始运行
-func (node *Node) register() {
-	node.DebugPrint("register", "start")
+func (node *Node) Register() {
+	node.DebugPrint("Register", "start")
 	node.hello()
 	node.CheckPeersNew()
 	go node.buildUp()
@@ -506,8 +506,8 @@ func (node *Node) register() {
 }
 
 // 使一个node退出
-func (node *Node) quit() {
-	node.DebugPrint("quit", "start")
+func (node *Node) Quit() {
+	node.DebugPrint("Quit", "start")
 	node.sendQuit()
 	node.HBcancel()
 	node.WsServersMutex.Lock()
@@ -666,7 +666,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 
 		switch msg.MessageData.Type {
 		case Quit:
-			node.DebugPrint("onRecv-quit", "start")
+			node.DebugPrint("onRecv-Quit", "start")
 			quitId := msg.From
 			go func() {
 				node.NodePeersMutex.Lock()

@@ -349,7 +349,7 @@ func (this *TcpChannelWorker) trySendRegisterMessage(link *TcpLink) {
 	if this.User == nil || link.HasSendRegister {
 		return
 	}
-	fmt.Println(this.User.getID() + " try to send register message")
+	fmt.Println(this.User.getID() + " try to send Register message")
 
 	link.HasSendRegister = true
 
@@ -364,7 +364,7 @@ func (this *TcpChannelWorker) trySendRegisterMessage(link *TcpLink) {
 
 	sentItem, err := json.Marshal(RegisterMsg)
 	if err != nil {
-		fmt.Println("Error marshaling register message:", err)
+		fmt.Println("Error marshaling Register message:", err)
 		return
 	}
 

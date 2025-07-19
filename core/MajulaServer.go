@@ -303,13 +303,13 @@ func (s *Server) handleFRPRegisterPackage(client *ClientConnection, pkg api.Maju
 	remoteAddr, ok4 := pkg.Args["remote_addr"].(string)
 
 	if !ok1 || !ok2 || !ok3 || !ok4 {
-		log.Println("frp register missing args")
+		log.Println("frp Register missing args")
 		return
 	}
 
 	err := s.Node.StubManager.RegisterFRPWithCode(code, localAddr, remoteNode, remoteAddr)
 	if err != nil {
-		log.Printf("Failed to register FRP error: %v", err)
+		log.Printf("Failed to Register FRP error: %v", err)
 	}
 }
 
@@ -318,12 +318,12 @@ func (s *Server) handleFRPRegisterWithAddrPackage(client *ClientConnection, pkg 
 	remoteAddr, ok2 := pkg.Args["remote_addr"].(string)
 	remoteNode, ok3 := pkg.Args["remote_node"].(string)
 	if !ok1 || !ok2 || !ok3 {
-		log.Println("frp register missing args")
+		log.Println("frp Register missing args")
 	}
 
 	_, err := s.Node.StubManager.RegisterFRPWithoutCode(localAddr, remoteNode, remoteAddr)
 	if err != nil {
-		log.Printf("Failed to register FRP error: %v", err)
+		log.Printf("Failed to Register FRP error: %v", err)
 	}
 }
 
@@ -334,12 +334,12 @@ func (s *Server) handleFRPRegisterTwoSidePackage(client *ClientConnection, pkg a
 	isServer, ok4 := pkg.Args["is_server"].(bool)
 
 	if !ok1 || !ok2 || !ok3 || !ok4 {
-		log.Println("frp register two side missing args")
+		log.Println("frp Register two side missing args")
 		return
 	}
 	err := s.Node.StubManager.RegisterFRPSimplified(code, remoteNode, targetAddr, isServer)
 	if err != nil {
-		log.Printf("Failed to register FRP error: %v", err)
+		log.Printf("Failed to Register FRP error: %v", err)
 	}
 }
 
@@ -367,7 +367,7 @@ func (s *Server) handleStartFRPWithoutRegistrationPackage(client *ClientConnecti
 
 	_, err := s.Node.StubManager.RegisterFRPWithoutCode(localAddr, remoteNode, remoteAddr)
 	if err != nil {
-		log.Printf("Failed to register FRP")
+		log.Printf("Failed to Register FRP")
 		return
 	}
 	err = s.Node.StubManager.RunFRPDynamicWithoutRegistration(localAddr, remoteNode, remoteAddr)
@@ -413,7 +413,7 @@ func (s *Server) handleRegisterNginxFRPAndRunPackage(client *ClientConnection, p
 	}
 	err = s.RegisterNginxFrp(mappedAddr, remoteNode, hostAddr, extraArgs)
 	if err != nil {
-		log.Printf("Failed to register and run Nginx frp error: %v", err)
+		log.Printf("Failed to Register and run Nginx frp error: %v", err)
 		return
 	}
 }
@@ -440,7 +440,7 @@ func (s *Server) handleUnregisterNginxFRPPackage(client *ClientConnection, pkg a
 	}
 	err = s.RemoveNginxFrp(mappedAddr, remoteNode, hostAddr, extraArgs)
 	if err != nil {
-		log.Printf("Failed to register and run Nginx frp error: %v", err)
+		log.Printf("Failed to Register and run Nginx frp error: %v", err)
 		return
 	}
 }

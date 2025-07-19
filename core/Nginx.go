@@ -241,7 +241,7 @@ func (this *Node) NginxFRPStarter(localAddr, remoteNode, remoteAddr string) erro
 		RemoteAddr: remoteAddr,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to register FRP: %v", err)
+		return fmt.Errorf("failed to Register FRP: %v", err)
 	}
 
 	err = this.StubManager.RunFRPDynamicWithoutRegistration(localAddr, remoteNode, remoteAddr)

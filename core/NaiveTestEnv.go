@@ -41,8 +41,8 @@ func (e *Env) AddServer(nodeID string, bindAddr string, wsPort string) error {
 
 	channel := NewChannelFull(nodeID+"-channel", node, worker)
 	worker.User = channel
-	node.addChannel(channel)
-	node.register()
+	node.AddChannel(channel)
+	node.Register()
 	registerTestRpc(node)
 
 	if wsPort != "" {
@@ -84,8 +84,8 @@ func (e *Env) AddClientNode(nodeID string, remoteAddr string, wsPort string) err
 	worker.User = channel
 	channel.addChannelPeer(remoteAddr)
 
-	node.addChannel(channel)
-	node.register()
+	node.AddChannel(channel)
+	node.Register()
 	registerTestRpc(node)
 
 	if wsPort != "" {
@@ -148,7 +148,7 @@ func (e *Env) PrintRouting(nodeID string) {
 func (e *Env) Shutdown() {
 	for id, node := range e.Nodes {
 		fmt.Printf("[Env] Shutting down Node %s\n", id)
-		node.quit()
+		node.Quit()
 	}
 	for id, client := range e.Clients {
 		fmt.Printf("[Env] Disconnecting client %s\n", id)

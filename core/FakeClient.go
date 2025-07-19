@@ -33,8 +33,8 @@ func NewClientApp(nodeID string, isServer bool, bindAddr string, token string) *
 	if worker != nil {
 		channel := NewChannelFull(nodeID+"-channel", node, worker)
 		worker.User = channel
-		node.addChannel(channel)
-		node.register()
+		node.AddChannel(channel)
+		node.Register()
 		fmt.Println("Started server at", bindAddr)
 	}
 
@@ -57,8 +57,8 @@ func (app *ClientApp) ConnectToPeer(peerAddr string) error {
 	channel := NewChannelFull(channelID, app.Node, worker)
 	worker.User = channel
 	channel.addChannelPeer(peerAddr)
-	app.Node.addChannel(channel)
-	app.Node.register()
+	app.Node.AddChannel(channel)
+	app.Node.Register()
 
 	fmt.Printf("Connected to peer at %s\n", peerAddr)
 	return nil
@@ -84,7 +84,7 @@ func (app *ClientApp) PrintRouting() {
 }
 
 func (app *ClientApp) Shutdown() {
-	app.Node.quit()
+	app.Node.Quit()
 	if app.Worker != nil {
 		app.Worker.Close()
 	}
@@ -114,8 +114,8 @@ func NewSimpleServer(nodeID string, listenAddr string) *ClientApp {
 
 	channel := NewChannelFull(nodeID+"-channel", node, worker)
 	worker.User = channel
-	node.addChannel(channel)
-	node.register()
+	node.AddChannel(channel)
+	node.Register()
 
 	fmt.Printf("Server Node '%s' started on %s\n", nodeID, listenAddr)
 	return &ClientApp{Node: node, Worker: worker, Token: "default_token"}
@@ -148,8 +148,8 @@ func NewSimpleClient(nodeID string, remoteAddr string) *ClientApp {
 	channel := NewChannelFull(channelID, node, worker)
 	worker.User = channel
 	channel.addChannelPeer(remoteAddr)
-	node.addChannel(channel)
-	node.register()
+	node.AddChannel(channel)
+	node.Register()
 
 	fmt.Printf("Client Node '%s' connected to %s\n", nodeID, remoteAddr)
 	return &ClientApp{Node: node, Worker: worker, Token: "default_token"}
