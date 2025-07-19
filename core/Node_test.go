@@ -1,11 +1,13 @@
-package main
+package core
 
 import (
+	"Majula/api"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"net"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -165,7 +167,7 @@ func TestRunBridgeTopologyEnv(t *testing.T) {
 func TestRunTcpEnv(t *testing.T) {
 	env := NewTcpEnv(22223, "test-token")
 
-	// Setup TCP nodes
+	// Setup TCP Nodes
 	env.addSimpleServer("S1")
 	env.addSimpleClient("C1", "S1")
 	env.addSimpleClient("C2", "S1")
@@ -179,8 +181,8 @@ func TestRunTcpEnv(t *testing.T) {
 }
 
 func TestClientServerCommunication(t *testing.T) {
-	node := NewNode("test-node")
-	server := NewServer(node)
+	node := NewNode("test-Node")
+	server := NewServer(node, "18080")
 
 	go func() {
 		r := gin.Default()
@@ -199,7 +201,7 @@ func TestClientServerCommunication(t *testing.T) {
 	}
 	defer conn.Close()
 
-	registerMsg := MajulaPackage{
+	registerMsg := api.MajulaPackage{
 		Method: "REGISTER_CLIENT",
 	}
 	msgBytes, _ := json.Marshal(registerMsg)
@@ -209,7 +211,7 @@ func TestClientServerCommunication(t *testing.T) {
 	}
 
 	time.AfterFunc(500*time.Millisecond, func() {
-		server.SendToClient("test-client", MajulaPackage{
+		server.SendToClient("test-client", api.MajulaPackage{
 			Method: "PUBLISH",
 			Topic:  "test-topic",
 			Args: map[string]interface{}{
@@ -265,7 +267,7 @@ func TestRpcCommunication(t *testing.T) {
 	// 3. 等待两边连接初始化、路由表生成
 	time.Sleep(2 * time.Second)
 
-	result, ok := clientNode.makeRpcRequest("serverNode", "default", "whoami", map[string]interface{}{})
+	result, ok := clientNode.MakeRpcRequest("serverNode", "default", "whoami", map[string]interface{}{})
 	if !ok {
 		t.Fatal("RPC request failed")
 	}
@@ -283,8 +285,8 @@ func TestRpcCommunication(t *testing.T) {
 }
 
 func TestWebSocketRpc(t *testing.T) {
-	node := NewNode("ws-node")
-	server := NewServer(node)
+	node := NewNode("ws-Node")
+	server := NewServer(node, "18080")
 
 	go func() {
 		r := gin.Default()
@@ -295,7 +297,7 @@ func TestWebSocketRpc(t *testing.T) {
 	}()
 	time.Sleep(time.Second)
 
-	client := NewMajulaClient("http://localhost:18080", "client-A")
+	client := api.NewMajulaClient("http://localhost:18080", "client-A")
 
 	done := make(chan struct{})
 	client.RegisterRpc("echo", func(fun string, args map[string]interface{}) interface{} {
@@ -309,7 +311,7 @@ func TestWebSocketRpc(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		err := server.SendToClient("client-A", MajulaPackage{
+		err := server.SendToClient("client-A", api.MajulaPackage{
 			Method:   "RPC",
 			Fun:      "echo",
 			Args:     map[string]interface{}{"text": "hello"},
@@ -329,8 +331,8 @@ func TestWebSocketRpc(t *testing.T) {
 }
 
 func TestWebSocketRpcCallToNodeRegisteredService(t *testing.T) {
-	node := NewNode("test-node")
-	server := NewServer(node)
+	node := NewNode("test-Node")
+	server := NewServer(node, "18080")
 
 	node.registerRpcService("add", "default", RPC_FuncInfo{}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
 		a, _ := params["a"].(float64)
@@ -348,7 +350,7 @@ func TestWebSocketRpcCallToNodeRegisteredService(t *testing.T) {
 	}()
 	time.Sleep(500 * time.Millisecond)
 
-	client := NewMajulaClient("http://localhost:18080", "client-A")
+	client := api.NewMajulaClient("http://localhost:18080", "client-A")
 	time.Sleep(2 * time.Second)
 
 	time.Sleep(500 * time.Millisecond)
@@ -358,7 +360,7 @@ func TestWebSocketRpcCallToNodeRegisteredService(t *testing.T) {
 		"b": 20,
 	}
 
-	result, ok := client.CallRpc("add", "test-node", "default", args, 10*time.Second)
+	result, ok := client.CallRpc("add", "test-Node", "default", args, 10*time.Second)
 	if !ok {
 		t.Fatal("RPC call failed")
 	}
@@ -395,12 +397,12 @@ func TestCallAllRpcsViaWs(t *testing.T) {
 
 	go func() {
 		r := gin.Default()
-		r.GET("/ws/:target", NewServer(serverNode).handleWS)
+		r.GET("/ws/:target", NewServer(serverNode, "18080").handleWS)
 		if err := r.Run(":18080"); err != nil {
 			t.Errorf("WebSocket server failed: %v", err)
 		}
 	}()
-	t.Log("Server node + WebSocket started")
+	t.Log("Server Node + WebSocket started")
 	time.Sleep(1 * time.Second)
 
 	clientNode := NewNode("clientNode")
@@ -420,9 +422,9 @@ func TestCallAllRpcsViaWs(t *testing.T) {
 	clientNode.addChannel(clientChannel)
 	clientNode.register()
 
-	t.Log("Client node connected to server")
+	t.Log("Client Node connected to server")
 
-	wsClient := NewMajulaClient("http://localhost:18080", "tester-ws")
+	wsClient := api.NewMajulaClient("http://localhost:18080", "tester-ws")
 	time.Sleep(2 * time.Second) // 等待连接稳定
 
 	params := map[string]interface{}{"rpcProvider": "init"}
@@ -489,11 +491,11 @@ func TestFrpCommunicationBetweenNodes(t *testing.T) {
 
 	code := "test-frp"
 
-	err := clientA.stubManager.RegisterFRPCode(code, frpClientAddr, "clientB", frpServerAddr)
+	err := clientA.StubManager.RegisterFRPWithCode(code, frpClientAddr, "clientB", frpServerAddr)
 	if err != nil {
 		t.Fatal("Failed to register FRP on clientA:", err)
 	}
-	err = clientB.stubManager.RegisterFRPCode(code, frpClientAddr, "clientA", frpServerAddr)
+	err = clientB.StubManager.RegisterFRPWithCode(code, frpClientAddr, "clientA", frpServerAddr)
 	if err != nil {
 		t.Fatal("Failed to register FRP on clientB:", err)
 	}
@@ -512,7 +514,7 @@ func TestFrpCommunicationBetweenNodes(t *testing.T) {
 		}
 		defer conn.Close()
 
-		buf := make([]byte, 1024)
+		buf := make([]byte, 65536)
 		for {
 			n, err := conn.Read(buf)
 			if err != nil {
@@ -525,8 +527,8 @@ func TestFrpCommunicationBetweenNodes(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	if err := clientA.stubManager.StartFRPListener(code, frpClientAddr); err != nil {
-		t.Fatalf("ClientA StartFRPListener failed: %v", err)
+	if err := clientA.StubManager.RunRegisteredFRP(code); err != nil {
+		t.Fatalf("ClientA RunRegisteredFRP failed: %v", err)
 	}
 
 	time.Sleep(1 * time.Second)
@@ -534,25 +536,299 @@ func TestFrpCommunicationBetweenNodes(t *testing.T) {
 	go func() {
 		conn, err := net.Dial("tcp", frpClientAddr)
 		if err != nil {
-			t.Fatalf("Dial on port 23333 failed: %v", err)
-			conn.Close()
+			t.Fatalf("Dial on Port 23333 failed: %v", err)
+			return
 		}
-		for i := 0; i < 50; i++ {
-			conn.Write([]byte(fmt.Sprintf("msg-%d", i)))
-			time.Sleep(500 * time.Millisecond)
+		defer conn.Close()
+
+		time.Sleep(1 * time.Second)
+
+		for i := 0; i < 15000; i++ {
+			message := []byte(fmt.Sprintf("msg-%d", i))
+
+			for {
+				_, err := conn.Write(message)
+				if err == nil {
+					break
+				}
+
+				time.Sleep(10 * time.Millisecond)
+			}
+			//t.Logf("ClientA send: %s", "msg-"+fmt.Sprintf("%d", i))
 		}
-		clientA.stubManager.CloseAllStubs()
 	}()
 
 	/*
-		if err := clientA.stubManager.RunFRPFromLocalStub(code); err != nil {
+		if err := clientA.StubManager.RunFRPWithStub(code); err != nil {
 			t.Fatalf("ClientA RunFRP failed: %v", err)
 		}
-		if err := clientB.stubManager.StartFRPListener(code, "localhost:9002"); err != nil {
-			t.Fatalf("ClientB StartFRPListener failed: %v", err)
+		if err := clientB.StubManager.RunRegisteredFRP(code, "localhost:9002"); err != nil {
+			t.Fatalf("ClientB RunRegisteredFRP failed: %v", err)
 		}
 
 	*/
 
 	time.Sleep(5 * time.Second)
+	clientA.StubManager.CloseAllStubs()
+}
+
+func TestWindowBufferAdvance(t *testing.T) {
+	const size = 1024
+	wb := NewWindowBuffer(1, size)
+
+	for i := int64(1); i <= int64(size); i++ {
+		ok := wb.Put(i, []byte{byte(i % 256)})
+		if !ok {
+			t.Fatalf("Put failed at seq %d", i)
+		}
+	}
+
+	for i := int64(1); i <= int64(size); i++ {
+		data, ok := wb.Get(i)
+		if !ok || data[0] != byte(i%256) {
+			t.Errorf("Get mismatch at seq %d: got %v, ok=%v", i, data, ok)
+		}
+	}
+
+	ok := wb.Put(int64(size)+1, []byte{0})
+	if ok {
+		t.Errorf("Expected Put to fail when window is full")
+	}
+
+	advanced := wb.BundleAdvanceUpTo(int64(size))
+	if advanced != size {
+		t.Errorf("Expected to advance %d slots, got %d", size, advanced)
+	}
+
+	if wb.Count() != 0 {
+		t.Errorf("Expected Count = 0 after full advance, got %d", wb.Count())
+	}
+
+	for i := int64(size + 1); i <= int64(size*2); i++ {
+		ok := wb.Put(i, []byte{byte(i % 256)})
+		if !ok {
+			t.Fatalf("Put failed after advance at seq %d", i)
+		}
+	}
+}
+
+func TestFrpFileTransfer(t *testing.T) {
+
+	netConnectionAddr := "127.0.0.1:3000"
+
+	frpClientAddr := "127.0.0.1:23333"
+	frpServerAddr := "127.0.0.1:23337"
+
+	serverNode := NewNode("server")
+	clientA := NewNode("clientA")
+	clientB := NewNode("clientB")
+
+	serverWorker := NewTcpConnection("server", false, netConnectionAddr, "", nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
+	serverWorker.User = serverChannel
+	serverNode.addChannel(serverChannel)
+	serverNode.register()
+
+	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
+	clientAWorker.User = clientAChannel
+	clientAChannel.addChannelPeer("server")
+	clientA.addChannel(clientAChannel)
+	clientA.register()
+
+	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
+	clientBWorker.User = clientBChannel
+	clientBChannel.addChannelPeer("server")
+	clientB.addChannel(clientBChannel)
+	clientB.register()
+
+	time.Sleep(2 * time.Second)
+
+	code := "test-frp-file"
+
+	if err := clientA.StubManager.RegisterFRPWithCode(code, frpClientAddr, "clientB", frpServerAddr); err != nil {
+		t.Fatalf("ClientA register FRP failed: %v", err)
+	}
+	if err := clientB.StubManager.RegisterFRPWithCode(code, frpClientAddr, "clientA", frpServerAddr); err != nil {
+		t.Fatalf("ClientB register FRP failed: %v", err)
+	}
+
+	srcFile := "test_input.txt"
+	dstFile := "test_output.txt"
+	content := "Hello FRP file transfer!"
+	err := os.WriteFile(srcFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test input file: %v", err)
+	}
+	defer os.Remove(srcFile)
+	defer os.Remove(dstFile)
+
+	time.Sleep(1 * time.Second)
+
+	err = clientA.StubManager.RegisteredTransferFileToRemote(code, srcFile, dstFile)
+	if err != nil {
+		t.Fatalf("RegisteredTransferFileToRemote failed: %v", err)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	data, err := os.ReadFile(dstFile)
+	if err != nil {
+		t.Fatalf("Failed to read destination file: %v", err)
+	}
+
+	if string(data) != content {
+		t.Fatalf("File content mismatch. Got: %s, Expected: %s", string(data), content)
+	}
+}
+
+func TestFrpDynamicTunnel(t *testing.T) {
+	netConnectionAddr := "127.0.0.1:3002"
+	dynClientAddr := "127.0.0.1:24444"
+	dynServerAddr := "127.0.0.1:24445"
+
+	serverNode := NewNode("server")
+	clientA := NewNode("clientA")
+	clientB := NewNode("clientB")
+
+	serverWorker := NewTcpConnection("server", false, netConnectionAddr, "", nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
+	serverWorker.User = serverChannel
+	serverNode.addChannel(serverChannel)
+	serverNode.register()
+
+	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
+	clientAWorker.User = clientAChannel
+	clientAChannel.addChannelPeer("server")
+	clientA.addChannel(clientAChannel)
+	clientA.register()
+
+	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
+	clientBWorker.User = clientBChannel
+	clientBChannel.addChannelPeer("server")
+	clientB.addChannel(clientBChannel)
+	clientB.register()
+
+	time.Sleep(2 * time.Second)
+
+	if err := clientA.StubManager.RegisterFRPAndRun("clientB", dynClientAddr, dynServerAddr); err != nil {
+		t.Fatalf("RegisterFRPAndRun failed: %v", err)
+	}
+
+	go func() {
+		ln, err := net.Listen("tcp", dynServerAddr)
+		if err != nil {
+			t.Fatalf("Server listen failed: %v", err)
+		}
+		defer ln.Close()
+		conn, err := ln.Accept()
+		if err != nil {
+			t.Fatalf("Server accept failed: %v", err)
+		}
+		defer conn.Close()
+		buf := make([]byte, 65536)
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				return
+			}
+			t.Logf("Server received: %s", string(buf[:n]))
+		}
+	}()
+
+	time.Sleep(1 * time.Second)
+
+	go func() {
+		conn, err := net.Dial("tcp", dynClientAddr)
+		if err != nil {
+			t.Fatalf("Client dial failed: %v", err)
+		}
+		defer conn.Close()
+		time.Sleep(1 * time.Second)
+		for i := 0; i < 15000; i++ {
+			msg := fmt.Sprintf("ping-%d", i)
+			conn.Write([]byte(msg))
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	time.Sleep(10 * time.Second)
+	clientA.StubManager.CloseAllStubs()
+}
+
+func TestFrpDynamicFileTransfer(t *testing.T) {
+	netConnectionAddr := "127.0.0.1:3001"
+
+	clientA := NewNode("clientA")
+	clientB := NewNode("clientB")
+
+	serverWorker := NewTcpConnection("server", false, netConnectionAddr, "", nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	serverNode := NewNode("server")
+	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
+	serverWorker.User = serverChannel
+	serverNode.addChannel(serverChannel)
+	serverNode.register()
+
+	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
+	clientAWorker.User = clientAChannel
+	clientAChannel.addChannelPeer("server")
+	clientA.addChannel(clientAChannel)
+	clientA.register()
+
+	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
+	clientBWorker.User = clientBChannel
+	clientBChannel.addChannelPeer("server")
+	clientB.addChannel(clientBChannel)
+	clientB.register()
+
+	time.Sleep(2 * time.Second)
+
+	srcFile := "test_input_dyn.txt"
+	dstFile := "test_output_dyn.txt"
+	content := "Dynamic FRP file transfer test"
+	err := os.WriteFile(srcFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test input file: %v", err)
+	}
+	defer os.Remove(srcFile)
+	defer os.Remove(dstFile)
+
+	err = clientA.StubManager.TransferFileToRemoteWithoutRegistration("clientB", srcFile, dstFile)
+	if err != nil {
+		t.Fatalf("TransferFileToRemoteWithoutRegistration failed: %v", err)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	data, err := os.ReadFile(dstFile)
+	if err != nil {
+		t.Fatalf("Failed to read destination file: %v", err)
+	}
+
+	if string(data) != content {
+		t.Fatalf("File content mismatch. Got: %s, Expected: %s", string(data), content)
+	}
 }

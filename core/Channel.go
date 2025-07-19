@@ -1,24 +1,28 @@
-package main
+package core
 
 import (
+	"Majula/common"
 	"fmt"
 	"strconv"
 	"sync"
 	"time"
 )
 
+// channel的Debug打印
 func (channel *Channel) DebugPrint(name string, message string) {
-	if !DebugPrint {
+	if !common.DebugPrint {
 		return
 	}
 	fmt.Printf("{%s: %s} %s\n", channel.ID, name, message)
 }
 
+// connection的连接情况
 type Connection struct {
 	LastRecvTime time.Time
 	LastSendTime time.Time
 }
 
+// 更新最新发送时间
 func (channel *Channel) updateSendTime(peerID string) {
 	now := time.Now()
 	channel.ChannelPeerMutex.Lock()
@@ -178,7 +182,7 @@ func (channel *Channel) checkCost() {
 
 	channel.ChannelPeerMutex.Lock()
 	for peerID, conn := range channel.ChannelPeers {
-		if now.Sub(conn.LastRecvTime) > CostCheckTimePeriod*20 {
+		if now.Sub(conn.LastRecvTime) > common.CostCheckTimePeriod*20 {
 			expiredPeers = append(expiredPeers, peerID)
 		}
 	}
@@ -237,7 +241,7 @@ func (channel *Channel) handleCostAck(source string, msg *Message) {
 		Source:  channel.HNode.ID,
 		Target:  source,
 		Cost:    cost,
-		Version: channel.HNode.myLinksVersion,
+		Version: channel.HNode.MyLinksVersion,
 		Channel: channel.ID,
 	}
 	go channel.HNode.linkUpdateFromChannel(link)

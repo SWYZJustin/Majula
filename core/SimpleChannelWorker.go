@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 
 type SimpleChannelWorker struct {
 	ID               string
-	ChannelUsers     map[string]ChannelUser // String is the channel's node id
+	ChannelUsers     map[string]ChannelUser // String is the channel's Node id
 	SimulateWaitTime int
 	myMutex          sync.Mutex
 }

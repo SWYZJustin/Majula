@@ -1,6 +1,8 @@
 package main
 
 import (
+	"Majula/api"
+	"Majula/core"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -9,8 +11,12 @@ import (
 	"time"
 )
 
-var env = NewEnv()
-var activeClient *Client
+// This Program Only server the purpose for test
+// Cannot guarantee to run
+// 仅作参考，不保证能跑
+
+var env = core.NewEnv()
+var activeClient *core.Client
 
 func main() {
 	reader := bufio.NewReader(os.Stdin)
@@ -18,7 +24,7 @@ func main() {
 
 	for {
 		if activeClient != nil {
-			fmt.Printf("(%s)> ", activeClient.clientId)
+			fmt.Printf("(%s)> ", activeClient.ClientId)
 		} else {
 			fmt.Print(">> ")
 		}
@@ -36,7 +42,7 @@ func main() {
 			case "help":
 				printClientHelp()
 			case "exit":
-				fmt.Printf("Exiting client session '%s'\n", activeClient.clientId)
+				fmt.Printf("Exiting client session '%s'\n", activeClient.ClientId)
 				activeClient = nil
 			case "sub":
 				if len(args) != 2 {
@@ -45,7 +51,7 @@ func main() {
 				}
 				topic := args[1]
 				err := activeClient.Subscribe(topic, func(topic, from, to string, content []byte) {
-					fmt.Printf("[To %s] Topic: %s | From: %s | Message: %s\n", activeClient.clientId, topic, from, string(content))
+					fmt.Printf("[To %s] Topic: %s | From: %s | Message: %s\n", activeClient.ClientId, topic, from, string(content))
 				})
 				if err != nil {
 					fmt.Println("Error:", err)
@@ -83,11 +89,11 @@ func main() {
 					break
 				}
 				targetNodeID := args[1]
-				if activeClient.targetNode == nil {
+				if activeClient.TargetNode == nil {
 					fmt.Println("Client is not connected to any node.")
 					break
 				}
-				result, ok := activeClient.targetNode.makeRpcRequest(
+				result, ok := activeClient.TargetNode.MakeRpcRequest(
 					targetNodeID,
 					"default",
 					"whoami", // hardcoded function name
@@ -123,7 +129,7 @@ func main() {
 					"a": a,
 					"b": b,
 				}
-				result, ok := activeClient.targetNode.makeRpcRequest(
+				result, ok := activeClient.TargetNode.MakeRpcRequest(
 					targetNodeID,
 					"default",
 					"add",
@@ -215,7 +221,7 @@ func main() {
 			if err != nil {
 				fmt.Println("Error:", err)
 			} else {
-				fmt.Printf("Client %s connected to node %s\n", client.clientId, node.ID)
+				fmt.Printf("Client %s connected to node %s\n", client.ClientId, node.ID)
 			}
 		case "login":
 			if len(args) != 2 {
@@ -227,18 +233,18 @@ func main() {
 				fmt.Println("Client not found.")
 				continue
 			}
-			if client.targetNode == nil {
+			if client.TargetNode == nil {
 				fmt.Println("Client is not connected to a node.")
 				continue
 			}
 			activeClient = client
-			fmt.Printf("Logged in as client '%s'.\n", activeClient.clientId)
+			fmt.Printf("Logged in as client '%s'.\n", activeClient.ClientId)
 
 			// Show connected clients to the same node
-			fmt.Printf("Node '%s' has the following clients:\n", client.targetNode.ID)
-			clients := client.targetNode.GetClientIDs()
+			fmt.Printf("Node '%s' has the following clients:\n", client.TargetNode.ID)
+			clients := client.TargetNode.GetClientIDs()
 			for _, cid := range clients {
-				if cid == client.clientId {
+				if cid == client.ClientId {
 					fmt.Printf("  - %s (you)\n", cid)
 				} else {
 					fmt.Printf("  - %s\n", cid)
@@ -304,25 +310,25 @@ func main() {
 			printClientHelp()
 
 		case "nodes":
-			if len(env.nodes) == 0 {
+			if len(env.Nodes) == 0 {
 				fmt.Println("No nodes created yet.")
 			} else {
 				fmt.Println("Existing nodes:")
-				for id := range env.nodes {
+				for id := range env.Nodes {
 					fmt.Println("  -", id)
 				}
 			}
 
 		case "clients":
-			if len(env.clients) == 0 {
+			if len(env.Clients) == 0 {
 				fmt.Println("No clients created yet.")
 			} else {
 				fmt.Println("Existing clients:")
-				for id := range env.clients {
-					client := env.clients[id]
+				for id := range env.Clients {
+					client := env.Clients[id]
 					target := "none"
-					if client.targetNode != nil {
-						target = client.targetNode.ID
+					if client.TargetNode != nil {
+						target = client.TargetNode.ID
 					}
 					fmt.Printf("  - %s (connected to: %s)\n", id, target)
 				}
@@ -364,7 +370,7 @@ func printClientHelp() {
 
 func websocketConsoleSession(clientID, wsURL string) {
 	printWSClientHelp()
-	client := NewMajulaClient(wsURL, clientID)
+	client := api.NewMajulaClient(wsURL, clientID)
 
 	//client.startHeartbeat(10 * time.Second)
 	client.Subscribe("debug", func(topic string, args map[string]interface{}) {

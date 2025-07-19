@@ -1,8 +1,9 @@
-package main
+package core
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 )
 
@@ -108,4 +109,14 @@ func HashIDWithToken(id string, token string) string {
 func VerifyHash(id string, token string, storedHash string) bool {
 	newHash := HashIDWithToken(id, token)
 	return newHash == storedHash
+}
+
+func getString(args map[string]interface{}, key, def string) string {
+	if v, ok := args[key]; ok {
+		if str, ok := v.(string); ok {
+			return str
+		}
+		return fmt.Sprintf("%v", v)
+	}
+	return def
 }

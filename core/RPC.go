@@ -1,6 +1,7 @@
-package main
+package core
 
 import (
+	"Majula/common"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -52,14 +53,14 @@ type RPC_Resp struct {
 }
 
 func (node *Node) floodRpcServices() {
-	node.rpcFuncsMutex.RLock()
+	node.RpcFuncsMutex.RLock()
 	functions := make(map[string]string)
-	for funcName, providers := range node.rpcFuncs {
+	for funcName, providers := range node.RpcFuncs {
 		for provider := range providers {
 			functions[funcName] = provider
 		}
 	}
-	node.rpcFuncsMutex.RUnlock()
+	node.RpcFuncsMutex.RUnlock()
 
 	info := RpcServiceInfo{
 		NodeID:    node.ID,
@@ -87,18 +88,18 @@ func (node *Node) floodRpcServices() {
 func (node *Node) isDuplicateRpc(from string, invokeId int64) bool {
 	key := fmt.Sprintf("%s:%d", from, invokeId)
 
-	node.receivedRpcMutex.Lock()
-	defer node.receivedRpcMutex.Unlock()
+	node.ReceivedRpcMutex.Lock()
+	defer node.ReceivedRpcMutex.Unlock()
 
-	if _, exists := node.receivedRpcCache[key]; exists {
+	if _, exists := node.ReceivedRpcCache[key]; exists {
 		return true
 	}
-	node.receivedRpcCache[key] = time.Now()
+	node.ReceivedRpcCache[key] = time.Now()
 	return false
 }
 
 func (node *Node) startCleanRpcCacheLoop() {
-	ticker := time.NewTicker(RpcCacheCleanTicket)
+	ticker := time.NewTicker(common.RpcCacheCleanTicket)
 	defer ticker.Stop()
 	for {
 		select {
@@ -106,62 +107,62 @@ func (node *Node) startCleanRpcCacheLoop() {
 			return
 		case <-ticker.C:
 			cutoff := time.Now().Add(-time.Minute * 10)
-			node.receivedRpcMutex.Lock()
-			for k, v := range node.receivedRpcCache {
+			node.ReceivedRpcMutex.Lock()
+			for k, v := range node.ReceivedRpcCache {
 				if v.Before(cutoff) {
-					delete(node.receivedRpcCache, k)
+					delete(node.ReceivedRpcCache, k)
 				}
 			}
-			node.receivedRpcMutex.Unlock()
+			node.ReceivedRpcMutex.Unlock()
 		}
 	}
 }
 
 func (this *Node) registerRpcService(funcName string, provider string, info RPC_FuncInfo, callback RPC_REQ_CALLBACK) {
-	this.rpcFuncsMutex.Lock()
-	defer this.rpcFuncsMutex.Unlock()
-	if _, ok := this.rpcFuncs[funcName]; !ok {
-		this.rpcFuncs[funcName] = map[string]RPC_Func{}
+	this.RpcFuncsMutex.Lock()
+	defer this.RpcFuncsMutex.Unlock()
+	if _, ok := this.RpcFuncs[funcName]; !ok {
+		this.RpcFuncs[funcName] = map[string]RPC_Func{}
 	}
-	this.rpcFuncs[funcName][provider] = RPC_Func{Callback: callback, Info: info}
+	this.RpcFuncs[funcName][provider] = RPC_Func{Callback: callback, Info: info}
 
 	go this.floodRpcServices()
 }
 
 func (this *Node) unregisterRpcService(funcName string, provider string) {
-	this.rpcFuncsMutex.Lock()
-	defer this.rpcFuncsMutex.Unlock()
-	if _, ok := this.rpcFuncs[funcName]; !ok {
+	this.RpcFuncsMutex.Lock()
+	defer this.RpcFuncsMutex.Unlock()
+	if _, ok := this.RpcFuncs[funcName]; !ok {
 		return
 	}
-	delete(this.rpcFuncs[funcName], provider)
-	if len(this.rpcFuncs[funcName]) == 0 {
-		delete(this.rpcFuncs, funcName)
+	delete(this.RpcFuncs[funcName], provider)
+	if len(this.RpcFuncs[funcName]) == 0 {
+		delete(this.RpcFuncs, funcName)
 	}
 	go this.floodRpcServices()
 }
 
 func (this *Node) findTargetLocalRpcService(funcName string, provider string) *RPC_Func {
-	this.rpcFuncsMutex.RLock()
-	defer this.rpcFuncsMutex.RUnlock()
-	if _, ok := this.rpcFuncs[funcName]; !ok {
+	this.RpcFuncsMutex.RLock()
+	defer this.RpcFuncsMutex.RUnlock()
+	if _, ok := this.RpcFuncs[funcName]; !ok {
 		return nil
 	}
-	if _, ok := this.rpcFuncs[funcName][provider]; !ok {
+	if _, ok := this.RpcFuncs[funcName][provider]; !ok {
 		return nil
 	}
-	tRpc := this.rpcFuncs[funcName][provider]
+	tRpc := this.RpcFuncs[funcName][provider]
 	return &tRpc
 }
 
-func (node *Node) makeRpcRequest(peer string, targetFuncProvider string, fun string, params map[string]interface{}) (interface{}, bool) {
+func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun string, params map[string]interface{}) (interface{}, bool) {
 	if peer == node.ID {
 		return node.invokeLocalRpc(targetFuncProvider, fun, params)
 	}
 
-	node.activeStubsMutex.Lock()
+	node.ActiveStubsMutex.Lock()
 	node.addInvokedId()
-	cId := atomic.LoadInt64(&node.invokedId)
+	cId := atomic.LoadInt64(&node.InvokedId)
 
 	cRequestData := RPC_Request{
 		Fun:    fun,
@@ -170,7 +171,7 @@ func (node *Node) makeRpcRequest(peer string, targetFuncProvider string, fun str
 	data, err := json.Marshal(cRequestData)
 	if err != nil {
 		node.DebugPrint("makeRpcRequest_"+fun+"_"+peer, "error marshaling request data: "+err.Error())
-		node.activeStubsMutex.Unlock()
+		node.ActiveStubsMutex.Unlock()
 		return nil, false
 	}
 
@@ -193,13 +194,13 @@ func (node *Node) makeRpcRequest(peer string, targetFuncProvider string, fun str
 		Params:    params,
 		TargetFun: fun,
 	}
-	node.activeStubs[cId] = stub
-	node.activeStubsMutex.Unlock()
+	node.ActiveStubs[cId] = stub
+	node.ActiveStubsMutex.Unlock()
 
 	defer func() {
-		node.activeStubsMutex.Lock()
-		delete(node.activeStubs, cId)
-		node.activeStubsMutex.Unlock()
+		node.ActiveStubsMutex.Lock()
+		delete(node.ActiveStubs, cId)
+		node.ActiveStubsMutex.Unlock()
 	}()
 
 	defer func() {
@@ -225,7 +226,7 @@ func (node *Node) makeRpcRequest(peer string, targetFuncProvider string, fun str
 
 		return result, true
 
-	case <-time.After(DefaultRpcOvertime):
+	case <-time.After(common.DefaultRpcOvertime):
 		node.DebugPrint("makeRpcRequest_"+fun+"_"+peer, "timeout")
 		return nil, false
 	}
@@ -357,9 +358,9 @@ func (node *Node) handleRpcResponse(msg *Message) {
 		return
 	}
 
-	node.activeStubsMutex.RLock()
-	stub, exists := node.activeStubs[msg.InvokeId]
-	node.activeStubsMutex.RUnlock()
+	node.ActiveStubsMutex.RLock()
+	stub, exists := node.ActiveStubs[msg.InvokeId]
+	node.ActiveStubsMutex.RUnlock()
 
 	if !exists {
 		node.DebugPrint("handleRpcResponse", fmt.Sprintf("No stub found for invokeId: %d", msg.InvokeId))
@@ -391,21 +392,21 @@ func (node *Node) handleRpcServiceFlood(msg *Message) {
 	}
 
 	go func() {
-		node.totalRpcsMutex.Lock()
-		defer node.totalRpcsMutex.Unlock()
+		node.TotalRpcsMutex.Lock()
+		defer node.TotalRpcsMutex.Unlock()
 
-		for funcName, nodeMap := range node.totalRpcs {
+		for funcName, nodeMap := range node.TotalRpcs {
 			delete(nodeMap, info.NodeID)
 			if len(nodeMap) == 0 {
-				delete(node.totalRpcs, funcName)
+				delete(node.TotalRpcs, funcName)
 			}
 		}
 
 		for funcName, provider := range info.Functions {
-			if _, ok := node.totalRpcs[funcName]; !ok {
-				node.totalRpcs[funcName] = make(map[string]string)
+			if _, ok := node.TotalRpcs[funcName]; !ok {
+				node.TotalRpcs[funcName] = make(map[string]string)
 			}
-			node.totalRpcs[funcName][info.NodeID] = provider
+			node.TotalRpcs[funcName][info.NodeID] = provider
 		}
 	}()
 
@@ -419,16 +420,16 @@ func (node *Node) handleRpcServiceFlood(msg *Message) {
 }
 
 func (node *Node) PrintTotalRpcs() {
-	node.totalRpcsMutex.RLock()
-	defer node.totalRpcsMutex.RUnlock()
+	node.TotalRpcsMutex.RLock()
+	defer node.TotalRpcsMutex.RUnlock()
 
 	fmt.Printf("Node %s: known RPC function providers\n", node.ID)
-	if len(node.totalRpcs) == 0 {
+	if len(node.TotalRpcs) == 0 {
 		fmt.Println("  No RPC info available.")
 		return
 	}
 
-	for funcName, nodeMap := range node.totalRpcs {
+	for funcName, nodeMap := range node.TotalRpcs {
 		fmt.Printf("  Function '%s':\n", funcName)
 		for nodeID, provider := range nodeMap {
 			fmt.Printf("    Node %s (entity: %s)\n", nodeID, provider)
@@ -438,7 +439,7 @@ func (node *Node) PrintTotalRpcs() {
 
 func (node *Node) startPeriodicRpcFlood() {
 	go func() {
-		ticker := time.NewTicker(RpcFloodTicket)
+		ticker := time.NewTicker(common.RpcFloodTicket)
 		defer ticker.Stop()
 
 		for {
@@ -473,7 +474,7 @@ func (node *Node) RegisterDefaultRPCs() {
 	})
 
 	// Whoami
-	node.registerRpcService("whoami", "init", RPC_FuncInfo{Note: "Returns node ID"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+	node.registerRpcService("whoami", "init", RPC_FuncInfo{Note: "Returns Node ID"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
 		return map[string]interface{}{"id": node.ID}
 	})
 
@@ -505,16 +506,16 @@ func (node *Node) RegisterDefaultRPCs() {
 
 	// 列出当前注册的 RPC 在provider下的函数
 	node.registerRpcService("allrpcs", "init", RPC_FuncInfo{Note: "List RPCs by provider"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
-		provider, ok := params["rpcProvider"].(string)
+		provider, ok := params["rpc_provider"].(string)
 		if !ok {
 			return map[string]interface{}{"error": "missing or invalid 'provider' parameter"}
 		}
 
-		node.rpcFuncsMutex.RLock()
-		defer node.rpcFuncsMutex.RUnlock()
+		node.RpcFuncsMutex.RLock()
+		defer node.RpcFuncsMutex.RUnlock()
 
 		funcs := []map[string]string{}
-		for funName, provMap := range node.rpcFuncs {
+		for funName, provMap := range node.RpcFuncs {
 			if fn, exists := provMap[provider]; exists {
 				funcs = append(funcs, map[string]string{
 					"name": funName,

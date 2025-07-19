@@ -1,6 +1,8 @@
-package main
+package core
 
 import (
+	"Majula/api"
+	"Majula/common"
 	"container/heap"
 	"context"
 	"encoding/json"
@@ -31,35 +33,38 @@ type Node struct { // Node
 	LinkSetMutex          sync.RWMutex
 	MessageVersionCounter int64 // 发送消息的版本控制
 
-	myLinksVersion int64 // 自己的link的版本控制
+	MyLinksVersion int64 // 自己的link的版本控制
 	NodePeersMutex sync.RWMutex
 
-	mySubs      map[string]map[string]MESSAGE_CALLBACK
-	mySubsMutex sync.RWMutex
+	MySubs      map[string]map[string]MESSAGE_CALLBACK
+	MySubsMutex sync.RWMutex
 
-	totalSubs      map[string][]string
-	totalSubsMutex sync.RWMutex
+	TotalSubs      map[string][]string
+	TotalSubsMutex sync.RWMutex
 
-	invokedId        int64
-	activeStubs      map[int64]*RPC_Stub
-	activeStubsMutex sync.RWMutex
+	InvokedId        int64
+	ActiveStubs      map[int64]*RPC_Stub
+	ActiveStubsMutex sync.RWMutex
 
-	rpcFuncs      map[string]map[string]RPC_Func
-	rpcFuncsMutex sync.RWMutex
+	RpcFuncs      map[string]map[string]RPC_Func
+	RpcFuncsMutex sync.RWMutex
 
-	receivedRpcMutex sync.Mutex
-	receivedRpcCache map[string]time.Time
+	ReceivedRpcMutex sync.Mutex
+	ReceivedRpcCache map[string]time.Time
 
-	totalRpcs      map[string]map[string]string
-	totalRpcsMutex sync.RWMutex
+	TotalRpcs      map[string]map[string]string
+	TotalRpcsMutex sync.RWMutex
 
-	clientIDs      []string
-	clientIDsMutex sync.RWMutex
+	ClientIDs      []string
+	ClientIDsMutex sync.RWMutex
 
-	wsServers      []*Server
-	wsServersMutex sync.RWMutex
+	WsServers      []*Server
+	WsServersMutex sync.RWMutex
 
-	stubManager *StubManager
+	StubManager *StubManager
+
+	HttpProxyStubs      map[string]map[string]*HTTPProxyDefine
+	HttpProxyStubsMutex sync.Mutex
 }
 
 type SubscriptionInfo struct {
@@ -69,19 +74,19 @@ type SubscriptionInfo struct {
 
 func (node *Node) addLocalSub(pTopic string, pClientName string, cb MESSAGE_CALLBACK) {
 	node.DebugPrint("addLocalSub", fmt.Sprintf("topic=%s client=%s", pTopic, pClientName))
-	node.mySubsMutex.Lock()
-	defer node.mySubsMutex.Unlock()
-	if node.mySubs == nil {
-		node.mySubs = make(map[string]map[string]MESSAGE_CALLBACK)
+	node.MySubsMutex.Lock()
+	defer node.MySubsMutex.Unlock()
+	if node.MySubs == nil {
+		node.MySubs = make(map[string]map[string]MESSAGE_CALLBACK)
 	}
 
-	if _, ok := node.mySubs[pTopic]; ok {
-		node.mySubs[pTopic][pClientName] = cb
+	if _, ok := node.MySubs[pTopic]; ok {
+		node.MySubs[pTopic][pClientName] = cb
 		return
 	}
 
-	node.mySubs[pTopic] = make(map[string]MESSAGE_CALLBACK)
-	node.mySubs[pTopic][pClientName] = cb
+	node.MySubs[pTopic] = make(map[string]MESSAGE_CALLBACK)
+	node.MySubs[pTopic][pClientName] = cb
 
 	msg := &Message{
 		MessageData: MessageData{
@@ -104,17 +109,17 @@ func (node *Node) addLocalSub(pTopic string, pClientName string, cb MESSAGE_CALL
 
 func (node *Node) removeLocalSub(pTopic string, pClientName string) {
 	node.DebugPrint("removeLocalSub", fmt.Sprintf("topic=%s client=%s", pTopic, pClientName))
-	node.mySubsMutex.Lock()
-	defer node.mySubsMutex.Unlock()
+	node.MySubsMutex.Lock()
+	defer node.MySubsMutex.Unlock()
 
-	subscribers, ok := node.mySubs[pTopic]
+	subscribers, ok := node.MySubs[pTopic]
 	if !ok {
 		return
 	}
 
 	delete(subscribers, pClientName)
 	if len(subscribers) == 0 {
-		delete(node.mySubs, pTopic)
+		delete(node.MySubs, pTopic)
 		msg := &Message{
 			MessageData: MessageData{
 				Type: TopicExit,
@@ -134,15 +139,15 @@ func (node *Node) removeLocalSub(pTopic string, pClientName string) {
 	}
 }
 
-func (node *Node) ClearSubClient(clientID string) {
-	node.mySubsMutex.RLock()
+func (node *Node) clearSubClient(clientID string) {
+	node.MySubsMutex.RLock()
 	var topics []string
-	for topic, subs := range node.mySubs {
+	for topic, subs := range node.MySubs {
 		if _, ok := subs[clientID]; ok {
 			topics = append(topics, topic)
 		}
 	}
-	node.mySubsMutex.RUnlock()
+	node.MySubsMutex.RUnlock()
 
 	for _, topic := range topics {
 		node.removeLocalSub(topic, clientID)
@@ -152,14 +157,14 @@ func (node *Node) ClearSubClient(clientID string) {
 func (node *Node) handleTopicInit(msg *Message) {
 	topic := msg.Data
 	sender := msg.From
-	node.totalSubsMutex.Lock()
-	defer node.totalSubsMutex.Unlock()
+	node.TotalSubsMutex.Lock()
+	defer node.TotalSubsMutex.Unlock()
 	node.DebugPrint("handleTopicInit", fmt.Sprintf("from=%s topic=%s", sender, topic))
-	if node.totalSubs == nil {
-		node.totalSubs = make(map[string][]string)
+	if node.TotalSubs == nil {
+		node.TotalSubs = make(map[string][]string)
 	}
 	alreadyKnown := false
-	if subs, ok := node.totalSubs[topic]; ok {
+	if subs, ok := node.TotalSubs[topic]; ok {
 		for _, sub := range subs {
 			if sub == sender {
 				alreadyKnown = true
@@ -169,7 +174,7 @@ func (node *Node) handleTopicInit(msg *Message) {
 	}
 
 	if !alreadyKnown {
-		node.totalSubs[topic] = append(node.totalSubs[topic], sender)
+		node.TotalSubs[topic] = append(node.TotalSubs[topic], sender)
 	}
 	newMsg := *msg
 	newMsg.LastSender = node.ID
@@ -183,10 +188,10 @@ func (node *Node) handleTopicInit(msg *Message) {
 func (node *Node) handleTopicExit(msg *Message) {
 	topic := msg.Data
 	sender := msg.From
-	node.totalSubsMutex.Lock()
-	defer node.totalSubsMutex.Unlock()
+	node.TotalSubsMutex.Lock()
+	defer node.TotalSubsMutex.Unlock()
 
-	if subs, ok := node.totalSubs[topic]; ok {
+	if subs, ok := node.TotalSubs[topic]; ok {
 		newSubs := []string{}
 		for _, sub := range subs {
 			if sub != sender {
@@ -194,9 +199,9 @@ func (node *Node) handleTopicExit(msg *Message) {
 			}
 		}
 		if len(newSubs) == 0 {
-			delete(node.totalSubs, topic)
+			delete(node.TotalSubs, topic)
 		} else {
-			node.totalSubs[topic] = newSubs
+			node.TotalSubs[topic] = newSubs
 		}
 	}
 
@@ -210,19 +215,19 @@ func (node *Node) handleTopicExit(msg *Message) {
 
 func (node *Node) publishOnTopic(pTopic string, pMessage string) {
 	node.DebugPrint("publishOnTopic", fmt.Sprintf("topic=%s msg=%s", pTopic, pMessage))
-	node.mySubsMutex.RLock()
-	if subs, ok := node.mySubs[pTopic]; ok {
+	node.MySubsMutex.RLock()
+	if subs, ok := node.MySubs[pTopic]; ok {
 		for _, cb := range subs {
 			go cb(pTopic, node.ID, node.ID, []byte(pMessage))
 		}
 	}
-	node.mySubsMutex.RUnlock()
-	node.totalSubsMutex.RLock()
-	if node.totalSubs == nil {
+	node.MySubsMutex.RUnlock()
+	node.TotalSubsMutex.RLock()
+	if node.TotalSubs == nil {
 		return
 	}
-	targets, ok := node.totalSubs[pTopic]
-	node.totalSubsMutex.RUnlock()
+	targets, ok := node.TotalSubs[pTopic]
+	node.TotalSubsMutex.RUnlock()
 	if !ok || len(targets) == 0 {
 		return
 	}
@@ -343,7 +348,7 @@ const (
 )
 
 func (n *Node) DebugPrint(name string, message string) {
-	if !DebugPrint {
+	if !common.DebugPrint {
 		return
 	}
 	fmt.Printf("[%s: %s] %s\n", n.ID, name, message)
@@ -371,29 +376,32 @@ func NewNodeWithChannel(pID string, pChannels map[string]*Channel) *Node {
 		ReceivedMsgs:          make(map[string]bool),
 		LinkSetMutex:          sync.RWMutex{},
 		MessageVersionCounter: 0,
-		myLinksVersion:        0,
+		MyLinksVersion:        0,
 		NodePeersMutex:        sync.RWMutex{},
-		mySubs:                make(map[string]map[string]MESSAGE_CALLBACK),
-		mySubsMutex:           sync.RWMutex{},
-		totalSubs:             make(map[string][]string),
-		totalSubsMutex:        sync.RWMutex{},
-		invokedId:             0,
-		activeStubs:           make(map[int64]*RPC_Stub),
-		activeStubsMutex:      sync.RWMutex{},
-		rpcFuncsMutex:         sync.RWMutex{},
-		rpcFuncs:              make(map[string]map[string]RPC_Func),
-		receivedRpcCache:      make(map[string]time.Time),
-		receivedRpcMutex:      sync.Mutex{},
-		totalRpcs:             make(map[string]map[string]string),
-		totalRpcsMutex:        sync.RWMutex{},
+		MySubs:                make(map[string]map[string]MESSAGE_CALLBACK),
+		MySubsMutex:           sync.RWMutex{},
+		TotalSubs:             make(map[string][]string),
+		TotalSubsMutex:        sync.RWMutex{},
+		InvokedId:             0,
+		ActiveStubs:           make(map[int64]*RPC_Stub),
+		ActiveStubsMutex:      sync.RWMutex{},
+		RpcFuncsMutex:         sync.RWMutex{},
+		RpcFuncs:              make(map[string]map[string]RPC_Func),
+		ReceivedRpcCache:      make(map[string]time.Time),
+		ReceivedRpcMutex:      sync.Mutex{},
+		TotalRpcs:             make(map[string]map[string]string),
+		TotalRpcsMutex:        sync.RWMutex{},
 
-		clientIDs:      make([]string, 0),
-		clientIDsMutex: sync.RWMutex{},
+		ClientIDs:      make([]string, 0),
+		ClientIDsMutex: sync.RWMutex{},
 
-		wsServers:      make([]*Server, 0),
-		wsServersMutex: sync.RWMutex{},
+		WsServers:      make([]*Server, 0),
+		WsServersMutex: sync.RWMutex{},
+
+		HttpProxyStubs:      make(map[string]map[string]*HTTPProxyDefine),
+		HttpProxyStubsMutex: sync.Mutex{},
 	}
-	aNode.initStubManager()
+	aNode.InitStubManager()
 	return &aNode
 }
 
@@ -414,42 +422,44 @@ func NewNode(pID string) *Node {
 		ReceivedMsgs:          make(map[string]bool),
 		LinkSetMutex:          sync.RWMutex{},
 		MessageVersionCounter: 0,
-		myLinksVersion:        0,
+		MyLinksVersion:        0,
 		NodePeersMutex:        sync.RWMutex{},
-		mySubs:                make(map[string]map[string]MESSAGE_CALLBACK),
-		mySubsMutex:           sync.RWMutex{},
-		totalSubs:             make(map[string][]string),
-		totalSubsMutex:        sync.RWMutex{},
-		invokedId:             0,
-		activeStubs:           make(map[int64]*RPC_Stub),
-		activeStubsMutex:      sync.RWMutex{},
-		rpcFuncsMutex:         sync.RWMutex{},
-		rpcFuncs:              make(map[string]map[string]RPC_Func),
-		receivedRpcCache:      make(map[string]time.Time),
-		receivedRpcMutex:      sync.Mutex{},
-		totalRpcs:             make(map[string]map[string]string),
-		totalRpcsMutex:        sync.RWMutex{},
+		MySubs:                make(map[string]map[string]MESSAGE_CALLBACK),
+		MySubsMutex:           sync.RWMutex{},
+		TotalSubs:             make(map[string][]string),
+		TotalSubsMutex:        sync.RWMutex{},
+		InvokedId:             0,
+		ActiveStubs:           make(map[int64]*RPC_Stub),
+		ActiveStubsMutex:      sync.RWMutex{},
+		RpcFuncsMutex:         sync.RWMutex{},
+		RpcFuncs:              make(map[string]map[string]RPC_Func),
+		ReceivedRpcCache:      make(map[string]time.Time),
+		ReceivedRpcMutex:      sync.Mutex{},
+		TotalRpcs:             make(map[string]map[string]string),
+		TotalRpcsMutex:        sync.RWMutex{},
 
-		clientIDs:      make([]string, 0),
-		clientIDsMutex: sync.RWMutex{},
+		ClientIDs:      make([]string, 0),
+		ClientIDsMutex: sync.RWMutex{},
 
-		wsServers:      make([]*Server, 0),
-		wsServersMutex: sync.RWMutex{},
+		WsServers:           make([]*Server, 0),
+		WsServersMutex:      sync.RWMutex{},
+		HttpProxyStubs:      make(map[string]map[string]*HTTPProxyDefine),
+		HttpProxyStubsMutex: sync.Mutex{},
 	}
-	aNode.initStubManager()
+	aNode.InitStubManager()
 	return &aNode
 }
 
 func (this *Node) addGlobalLinkVersion() {
-	atomic.AddInt64(&this.myLinksVersion, 1)
+	atomic.AddInt64(&this.MyLinksVersion, 1)
 }
 
 func (this *Node) addInvokedId() {
-	atomic.AddInt64(&this.invokedId, 1)
+	atomic.AddInt64(&this.InvokedId, 1)
 }
 
 func (this *Node) setGlobalLinkVersion(newVersion int64) {
-	atomic.AddInt64(&this.myLinksVersion, newVersion)
+	atomic.AddInt64(&this.MyLinksVersion, newVersion)
 }
 
 // 为一个Node添加一个Channel，channel的id是由node分配的
@@ -500,17 +510,17 @@ func (node *Node) quit() {
 	node.DebugPrint("quit", "start")
 	node.sendQuit()
 	node.HBcancel()
-	node.wsServersMutex.Lock()
-	defer node.wsServersMutex.Unlock()
-	for _, server := range node.wsServers {
+	node.WsServersMutex.Lock()
+	defer node.WsServersMutex.Unlock()
+	for _, server := range node.WsServers {
 		server.Shutdown()
 	}
-	node.wsServers = nil
+	node.WsServers = nil
 }
 
 // 将一条消息发送，可指定channelId，不然就是从路由表找
 func (node *Node) sendTo(targetId string, msg *Message, channelID ...string) {
-	//node.DebugPrint(msg.Print(), DebugSend)
+	//Node.DebugPrint(msg.Print(), DebugSend)
 	msg.VersionSeq = uint64(atomic.LoadInt64(&node.MessageVersionCounter))
 	node.addMessageCounter()
 	msg.To = targetId
@@ -559,11 +569,11 @@ func (node *Node) generateMsgKey(msg *Message) string {
 // bundlesend是用来处理topic发送的
 func (node *Node) handleBundle(originalMsg *Message, topic, payload string) {
 	newBundle := map[string][]string{}
-	node.mySubsMutex.RLock()
+	node.MySubsMutex.RLock()
 	for _, realTo := range originalMsg.MessageData.BundleTo {
 		if realTo == node.ID {
 			node.DebugPrint("topic-msg", fmt.Sprintf("[Topic %s] %s", topic, payload))
-			if subs, ok := node.mySubs[topic]; ok {
+			if subs, ok := node.MySubs[topic]; ok {
 				for _, cb := range subs {
 					go cb(topic, originalMsg.From, node.ID, []byte(payload))
 				}
@@ -577,7 +587,7 @@ func (node *Node) handleBundle(originalMsg *Message, topic, payload string) {
 			newBundle[nextHop] = append(newBundle[nextHop], realTo)
 		}
 	}
-	node.mySubsMutex.RUnlock()
+	node.MySubsMutex.RUnlock()
 
 	for nextHop, targets := range newBundle {
 		copyMsg := *originalMsg
@@ -606,8 +616,8 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 		node.NodePeersMutex.Lock()
 		defer node.NodePeersMutex.Unlock()
 		if _, ok := node.NodePeers[sender]; !ok {
-			//println(node.ID, "onRecv", msg.Type, sender)
-			//fmt.Println(node.ID + " add " + sender + " to node peer")
+			//println(Node.ID, "onRecv", msg.Type, sender)
+			//fmt.Println(Node.ID + " add " + sender + " to Node peer")
 			node.DebugPrint("onRecv-hello-addPeer", sender)
 			node.NodePeers[sender] = &NodePeer{
 				LastActiveTime: time.Now(),
@@ -650,7 +660,8 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 	// 如果消息是发给本node的
 	if msg.To == node.ID {
 		if msg.isFrp() {
-			go node.stubManager.handleFrpMessages(msg)
+			go node.StubManager.handleFrpMessages(msg)
+			return
 		}
 
 		switch msg.MessageData.Type {
@@ -677,13 +688,13 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 
 			// 非 bundle 情况
 			node.DebugPrint("topic-msg", fmt.Sprintf("[Topic %s] %s", topic, payload))
-			node.mySubsMutex.RLock()
-			if subs, ok := node.mySubs[topic]; ok {
+			node.MySubsMutex.RLock()
+			if subs, ok := node.MySubs[topic]; ok {
 				for _, cb := range subs {
 					go cb(topic, msg.From, node.ID, []byte(payload))
 				}
 			}
-			node.mySubsMutex.RUnlock()
+			node.MySubsMutex.RUnlock()
 
 		case RpcRequest:
 			node.DebugPrint("onRecv-rpcRequest", "start")
@@ -709,15 +720,15 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 				return
 			}
 
-			node.wsServersMutex.RLock()
-			defer node.wsServersMutex.RUnlock()
+			node.WsServersMutex.RLock()
+			defer node.WsServersMutex.RUnlock()
 
-			for _, wsServer := range node.wsServers {
-				err := wsServer.SendToClient(targetClientID, MajulaPackage{
+			for _, wsServer := range node.WsServers {
+				err := wsServer.SendToClient(targetClientID, api.MajulaPackage{
 					Method: "PRIVATE_MESSAGE",
 					Args: map[string]interface{}{
-						"from_node": msg.From,
-						"message":   payload["payload"],
+						"source_node": msg.From,
+						"message":     payload["payload"],
 					},
 				})
 				if err == nil {
@@ -726,12 +737,12 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 			}
 
 		default:
-			//node.DebugPrint("onRecv-Message", msg.Data)
+			//Node.DebugPrint("onRecv-Message", msg.Data)
 			fmt.Println("Receive message: " + msg.Data)
 		}
 		// 确实是发给我的，但我只是转发用
 	} else if msg.Route == node.ID {
-		fmt.Println("Trans: " + msg.Data)
+		//fmt.Println("Trans: " + msg.Data)
 		msg.TTL -= 1
 		if msg.TTL <= 0 {
 			return
@@ -755,7 +766,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 		}
 		msg.LastSender = node.ID
 		node.DebugPrint("onRecv-transmit", msg.Print())
-		fmt.Println("onRecv-TransFinal", msg.Print())
+		//fmt.Println("onRecv-TransFinal", msg.Print())
 		go channel.send(nextHopID, msg)
 
 		// 误发或者广播，但不是发给我，直接丢弃
@@ -820,7 +831,7 @@ func (node *Node) startRetryLoop() {
 			} else {
 				node.RetryMutex.Unlock()
 			}
-			time.Sleep(RetryLoopPeriod)
+			time.Sleep(common.RetryLoopPeriod)
 		}
 	}
 }
@@ -837,7 +848,7 @@ func (node *Node) cleanupReceivedMsgs() {
 				delete(node.ReceivedMsgs, key)
 			}
 			node.MsgMutex.Unlock()
-			time.Sleep(ReceivedMessageCleanUpPeriod)
+			time.Sleep(common.ReceivedMessageCleanUpPeriod)
 		}
 	}
 }
@@ -863,7 +874,7 @@ func (node *Node) hello() {
 
 // 发送心跳，连带着linkset的信息
 func (node *Node) heartbeat() {
-	ticker := time.NewTicker(HeartBeatTimePeriod)
+	ticker := time.NewTicker(common.HeartBeatTimePeriod)
 	defer ticker.Stop()
 	for {
 		select {
@@ -923,7 +934,7 @@ func (node *Node) updateLinkCost(peerId string, cost int64) error {
 	defer node.LinkSetMutex.Unlock()
 
 	if _, exists := node.LinkSet[node.ID]; !exists {
-		return fmt.Errorf("LinkSet for node %s does not exist", node.ID)
+		return fmt.Errorf("LinkSet for Node %s does not exist", node.ID)
 	}
 	if _, exists := node.LinkSet[node.ID][peerId]; !exists {
 		return fmt.Errorf("Link from %s to %s does not exist", node.ID, peerId)
@@ -936,7 +947,7 @@ func (node *Node) updateLinkCost(peerId string, cost int64) error {
 
 // 构建路由表
 func (node *Node) buildUp() {
-	ticker := time.NewTicker(BuildUpTimePeriod)
+	ticker := time.NewTicker(common.BuildUpTimePeriod)
 	defer ticker.Stop()
 	isCheckLinks := false
 	for {
@@ -1111,7 +1122,7 @@ func (node *Node) CheckPeersNew() {
 }
 
 func (node *Node) collectAndCheckPeers() {
-	ticker := time.NewTicker(CostCheckTimePeriod)
+	ticker := time.NewTicker(common.CostCheckTimePeriod)
 	defer ticker.Stop()
 	for {
 		select {
@@ -1119,7 +1130,7 @@ func (node *Node) collectAndCheckPeers() {
 			return
 		case <-ticker.C:
 			node.addGlobalLinkVersion()
-			//node.collectLinkPaths()
+			//Node.collectLinkPaths()
 			node.CheckPeersNew()
 		}
 	}
@@ -1146,12 +1157,12 @@ func (node *Node) linkUpdateFromChannel(link Link) {
 }
 
 func (node *Node) floodAllSubscriptions() {
-	node.mySubsMutex.RLock()
-	topics := make([]string, 0, len(node.mySubs))
-	for topic := range node.mySubs {
+	node.MySubsMutex.RLock()
+	topics := make([]string, 0, len(node.MySubs))
+	for topic := range node.MySubs {
 		topics = append(topics, topic)
 	}
-	node.mySubsMutex.RUnlock()
+	node.MySubsMutex.RUnlock()
 
 	if len(topics) == 0 {
 		return
@@ -1188,20 +1199,20 @@ func (node *Node) handleSubscribeFlood(msg *Message) {
 		return
 	}
 
-	node.totalSubsMutex.Lock()
+	node.TotalSubsMutex.Lock()
 	for _, topic := range info.Topics {
 		found := false
-		for _, peer := range node.totalSubs[topic] {
+		for _, peer := range node.TotalSubs[topic] {
 			if peer == info.NodeID {
 				found = true
 				break
 			}
 		}
 		if !found {
-			node.totalSubs[topic] = append(node.totalSubs[topic], info.NodeID)
+			node.TotalSubs[topic] = append(node.TotalSubs[topic], info.NodeID)
 		}
 	}
-	node.totalSubsMutex.Unlock()
+	node.TotalSubsMutex.Unlock()
 
 	newMsg := *msg
 	newMsg.LastSender = node.ID
@@ -1213,7 +1224,7 @@ func (node *Node) handleSubscribeFlood(msg *Message) {
 
 // 周期性广播本地订阅的 Flood 逻辑
 func (node *Node) startSubscriptionFloodLoop() {
-	ticker := time.NewTicker(SubscribeFloodTicket)
+	ticker := time.NewTicker(common.SubscribeFloodTicket)
 	defer ticker.Stop()
 	for {
 		select {
@@ -1226,87 +1237,96 @@ func (node *Node) startSubscriptionFloodLoop() {
 }
 
 func (node *Node) PrintTotalSubs() {
-	node.totalSubsMutex.RLock()
-	defer node.totalSubsMutex.RUnlock()
+	node.TotalSubsMutex.RLock()
+	defer node.TotalSubsMutex.RUnlock()
 
-	fmt.Printf("%s 的订阅总表（totalSubs）如下：\n", node.ID)
-	if len(node.totalSubs) == 0 {
+	fmt.Printf("%s 的订阅总表（TotalSubs）如下：\n", node.ID)
+	if len(node.TotalSubs) == 0 {
 		fmt.Println("  无订阅记录")
 		return
 	}
 
-	for topic, subs := range node.totalSubs {
+	for topic, subs := range node.TotalSubs {
 		fmt.Printf("  Topic '%s': %v\n", topic, subs)
 	}
 }
 
 func (node *Node) AddClient(clientID string) {
-	node.clientIDsMutex.Lock()
-	defer node.clientIDsMutex.Unlock()
+	node.ClientIDsMutex.Lock()
+	defer node.ClientIDsMutex.Unlock()
 
-	for _, id := range node.clientIDs {
+	for _, id := range node.ClientIDs {
 		if id == clientID {
 			return
 		}
 	}
-	node.clientIDs = append(node.clientIDs, clientID)
+	node.ClientIDs = append(node.ClientIDs, clientID)
 }
 
 func (node *Node) RemoveClient(clientID string) {
-	node.clientIDsMutex.Lock()
-	newList := node.clientIDs[:0]
-	for _, id := range node.clientIDs {
+	node.ClientIDsMutex.Lock()
+	newList := node.ClientIDs[:0]
+	for _, id := range node.ClientIDs {
 		if id != clientID {
 			newList = append(newList, id)
 		}
 	}
-	node.clientIDs = newList
-	node.clientIDsMutex.Unlock()
+	node.ClientIDs = newList
+	node.ClientIDsMutex.Unlock()
 
-	node.ClearSubClient(clientID)
+	node.clearSubClient(clientID)
 	node.UnregisterRpcServicesByClient(clientID)
 }
 
 func (node *Node) UnregisterRpcServicesByClient(clientID string) {
-	node.rpcFuncsMutex.Lock()
-	defer node.rpcFuncsMutex.Unlock()
+	node.RpcFuncsMutex.Lock()
+	defer node.RpcFuncsMutex.Unlock()
 
-	for funcName, providers := range node.rpcFuncs {
+	for funcName, providers := range node.RpcFuncs {
 		if _, ok := providers[clientID]; ok {
 			delete(providers, clientID)
 			log.Printf("Unregistered RPC: %s by client %s", funcName, clientID)
 		}
 		if len(providers) == 0 {
-			delete(node.rpcFuncs, funcName)
+			delete(node.RpcFuncs, funcName)
 		}
 	}
 }
 
 func (node *Node) GetClientIDs() []string {
-	node.clientIDsMutex.RLock()
-	defer node.clientIDsMutex.RUnlock()
+	node.ClientIDsMutex.RLock()
+	defer node.ClientIDsMutex.RUnlock()
 
-	copyList := make([]string, len(node.clientIDs))
-	copy(copyList, node.clientIDs)
+	copyList := make([]string, len(node.ClientIDs))
+	copy(copyList, node.ClientIDs)
 	return copyList
 }
 
 func (node *Node) PrintClients() {
-	node.clientIDsMutex.RLock()
-	defer node.clientIDsMutex.RUnlock()
+	node.ClientIDsMutex.RLock()
+	defer node.ClientIDsMutex.RUnlock()
 
-	fmt.Printf("Node %s has connected clients:\n", node.ID)
-	if len(node.clientIDs) == 0 {
+	fmt.Printf("Node %s has connected Clients:\n", node.ID)
+	if len(node.ClientIDs) == 0 {
 		fmt.Println("  None")
 		return
 	}
-	for _, id := range node.clientIDs {
+	for _, id := range node.ClientIDs {
 		fmt.Printf("  - %s\n", id)
 	}
 }
 
 func (n *Node) RegisterWSServer(server *Server) {
-	n.wsServersMutex.Lock()
-	defer n.wsServersMutex.Unlock()
-	n.wsServers = append(n.wsServers, server)
+	n.WsServersMutex.Lock()
+	defer n.WsServersMutex.Unlock()
+	n.WsServers = append(n.WsServers, server)
+}
+
+func (n *Node) startHttpServer(wsPort string) {
+	server := NewServer(n, wsPort)
+	router := SetupRoutes(server)
+	err := router.Run(":" + wsPort)
+	if err != nil {
+		fmt.Printf("Server server failed to start on Port %s: %v\n", wsPort, err)
+	}
 }

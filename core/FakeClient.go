@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"fmt"
@@ -116,7 +116,7 @@ func NewSimpleServer(nodeID string, listenAddr string) *ClientApp {
 	node.addChannel(channel)
 	node.register()
 
-	fmt.Printf("Server node '%s' started on %s\n", nodeID, listenAddr)
+	fmt.Printf("Server Node '%s' started on %s\n", nodeID, listenAddr)
 	return &ClientApp{Node: node, Worker: worker, Token: defaultToken}
 }
 
@@ -150,7 +150,7 @@ func NewSimpleClient(nodeID string, remoteAddr string) *ClientApp {
 	node.addChannel(channel)
 	node.register()
 
-	fmt.Printf("Client node '%s' connected to %s\n", nodeID, remoteAddr)
+	fmt.Printf("Client Node '%s' connected to %s\n", nodeID, remoteAddr)
 	return &ClientApp{Node: node, Worker: worker, Token: defaultToken}
 }
 
