@@ -1,13 +1,12 @@
 # Usage Guide for Majula [Version 0.1]
 ![Logo](./Majula_Cover.png)
 
-Majula is a lightweight peer-to-peer messaging framework supporting topic-subscription, RPC, and optional HTTP/WebSocket access. In the future, it aims to support FRP and nginx in some way. This guide introduces how to quickly get started with the system after building and running the application.
+Majula is a lightweight peer-to-peer messaging framework supporting topic-subscription, RPC, and optional HTTP/WebSocket access. It also supports frp combined with Nginx reverse proxy for remote url, utilizing the penetration characteristic of the system. It also provides apis for the user to interact with the system. In the furture, it aims to achieve consensus, election and more options suitable for this system. A script with config to set up a node should be the next thing to do.
 
-Currently it's still under development. A lot of ideas have not been achieved to make it a usable system, especially, the apis are not provided perfectly and the functionalities are not fully achieved. So currently, it could only be seen as a toy program.
 
 ---
 
-## Getting Started
+## Getting Started (The following script should only be used for test on older version)
 
 ### Build & Run
 
@@ -165,14 +164,14 @@ Current features:
 * Topic-based pub-sub
 * RPC calls across nodes
 * WebSocket + HTTP support
+* Nginx + FRP for remote url reverse proxy
 
 Planned features:
 
-* Message sequencing guarantees (under progress) (TCP style)
-* Functional Reactive Programming (FRP)
-* Partial NGINX behavior emulation
-* apis exported to increase functionalities of the system
 * More improvements on the safety and efficiency
+* Election between clients
+* Consensus between clients
+* More functionalities
 ---
 
 For any contribution or question, feel free to open an issue or contact the repository maintainer (me)
