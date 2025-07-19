@@ -1,4 +1,4 @@
-# Usage Guide for Majula [Version 0.1]
+# Usage Guide for Majula [Version 0.2]
 ![Logo](./Majula_Cover.png)
 
 Majula is a lightweight peer-to-peer messaging framework supporting topic-subscription, RPC, and optional HTTP/WebSocket access. It also supports frp combined with Nginx reverse proxy for remote url, utilizing the penetration characteristic of the system. It also provides apis for the user to interact with the system. 
