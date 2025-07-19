@@ -6,16 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Channel.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Channel.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/FakeClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FakeClient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/MajulaNodeFromYaml.go" beforeDir="false" afterPath="$PROJECT_DIR$/MajulaNodeFromYaml.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/MajulaServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/MajulaServer.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/NaiveTestEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/NaiveTestEnv.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Nginx.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Nginx.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/SimpleEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/SimpleEnv.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/TCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TCPChannelWorker.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/TcpEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TcpEnv.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

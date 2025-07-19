@@ -720,7 +720,7 @@ func TestFrpDynamicTunnel(t *testing.T) {
 		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
 	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
 	clientAWorker.User = clientAChannel
-	clientAChannel.addChannelPeer("server")
+	//clientAChannel.addChannelPeer("server")
 	clientA.AddChannel(clientAChannel)
 	clientA.Register()
 
@@ -729,7 +729,7 @@ func TestFrpDynamicTunnel(t *testing.T) {
 		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
 	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
 	clientBWorker.User = clientBChannel
-	clientBChannel.addChannelPeer("server")
+	//clientBChannel.addChannelPeer("server")
 	clientB.AddChannel(clientBChannel)
 	clientB.Register()
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 
 	"gopkg.in/yaml.v3"
 )
@@ -92,7 +93,11 @@ func validateConfig(conf *NodeConfigYaml) error {
 }
 
 func main() {
-	data, err := ioutil.ReadFile("MajulaNodeTemplate.yaml")
+	configFile := "MajulaNodeTemplate.yaml"
+	if len(os.Args) > 1 {
+		configFile = os.Args[1]
+	}
+	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		log.Fatalf("读取配置文件失败: %v", err)
 	}

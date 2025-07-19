@@ -154,6 +154,7 @@ func (s *Server) writeLoop(ctx context.Context, client *ClientConnection) {
 
 func (s *Server) handleClientRegisterPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	s.Node.AddClient(client.ID)
+	fmt.Println("Client registered:", client.ID)
 }
 
 func (s *Server) handleSubscribePackage(client *ClientConnection, pkg api.MajulaPackage) {

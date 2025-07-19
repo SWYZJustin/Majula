@@ -1,0 +1,15 @@
+# Majula 节点1配置
+node_id: "node1"
+token: "default_token"
+
+majula_servers:
+  - port: 18080
+
+channels:
+  - type: "server"
+    listen_addr: "127.0.0.1:29090"
+    tcp:
+      frame_size: 4096
+      inactive_seconds: 10
+      send_queue_size: 1000
+      max_connections_per_sec: 5
