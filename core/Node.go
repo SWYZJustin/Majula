@@ -251,7 +251,7 @@ func (node *Node) publishOnTopic(pTopic string, pMessage string) {
 					Data: fmt.Sprintf("%s|%s", pTopic, pMessage),
 				},
 				From:       node.ID,
-				TTL:        100,
+				TTL:        common.DefaultMessageTTL,
 				LastSender: node.ID,
 				To:         toList[0],
 			}

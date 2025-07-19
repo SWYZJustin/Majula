@@ -2,6 +2,7 @@ package core
 
 import (
 	"Majula/api"
+	"Majula/common"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -211,7 +212,7 @@ func (s *Server) handleSendPackage(client *ClientConnection, pkg api.MajulaPacka
 		},
 		From:       s.Node.ID,
 		LastSender: s.Node.ID,
-		TTL:        100,
+		TTL:        common.DefaultMessageTTL,
 	}
 
 	s.Node.sendTo(targetNode, msg)
@@ -919,7 +920,7 @@ func (s *Server) handleSend(c *gin.Context) {
 		},
 		From:       s.Node.ID,
 		LastSender: s.Node.ID,
-		TTL:        100,
+		TTL:        common.DefaultMessageTTL,
 	}
 
 	s.Node.sendTo(targetNode, message)

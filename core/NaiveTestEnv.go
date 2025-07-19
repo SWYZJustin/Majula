@@ -28,12 +28,12 @@ func (e *Env) AddServer(nodeID string, bindAddr string, wsPort string) error {
 		bindAddr,
 		"",
 		nil,
-		defaultMaxFrameSize,
-		defaultMaxInactiveSeconds,
-		defaultMaxSendQueueSize,
-		defaultMaxConnectionsPerSec,
+		4096,
+		10,
+		1000,
+		5,
 		nil,
-		defaultToken,
+		"default_token",
 	)
 	if worker == nil {
 		return fmt.Errorf("failed to create server TcpConnection for %s", nodeID)
@@ -69,12 +69,12 @@ func (e *Env) AddClientNode(nodeID string, remoteAddr string, wsPort string) err
 		"",
 		remoteAddr,
 		nil,
-		defaultMaxFrameSize,
-		defaultMaxInactiveSeconds,
-		defaultMaxSendQueueSize,
-		defaultMaxConnectionsPerSec,
+		4096,
+		10,
+		1000,
+		5,
 		nil,
-		defaultToken,
+		"default_token",
 	)
 	if worker == nil {
 		return fmt.Errorf("failed to connect client Node %s to %s", nodeID, remoteAddr)

@@ -4,14 +4,6 @@ import (
 	"fmt"
 )
 
-const (
-	defaultMaxFrameSize         = 4096
-	defaultMaxInactiveSeconds   = 10
-	defaultMaxSendQueueSize     = 1000
-	defaultMaxConnectionsPerSec = 5
-	defaultToken                = "default_token"
-)
-
 type Client struct {
 	ClientId   string
 	TargetNode *Node

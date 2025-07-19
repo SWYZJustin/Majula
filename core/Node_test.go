@@ -4,13 +4,22 @@ import (
 	"Majula/api"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"net"
 	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+)
+
+const (
+	defaultMaxFrameSize         = 4096
+	defaultMaxInactiveSeconds   = int64(10)
+	defaultMaxSendQueueSize     = 1000
+	defaultMaxConnectionsPerSec = 5
+	defaultToken                = "default_token"
 )
 
 func TestBuildRoutingTable(t *testing.T) {

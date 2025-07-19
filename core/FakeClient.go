@@ -1,6 +1,7 @@
 package core
 
 import (
+	"Majula/common"
 	"fmt"
 )
 
@@ -71,7 +72,7 @@ func (app *ClientApp) Send(toID, content string) {
 		},
 		From:       app.Node.ID,
 		To:         toID,
-		TTL:        10,
+		TTL:        common.DefaultMessageTTL,
 		LastSender: app.Node.ID,
 	}
 	app.Node.sendTo(toID, msg)
@@ -99,12 +100,12 @@ func NewSimpleServer(nodeID string, listenAddr string) *ClientApp {
 		listenAddr,
 		"",
 		nil,
-		defaultMaxFrameSize,
-		defaultMaxInactiveSeconds,
-		defaultMaxSendQueueSize,
-		defaultMaxConnectionsPerSec,
+		4096,
+		10,
+		1000,
+		5,
 		nil,
-		defaultToken,
+		"default_token",
 	)
 
 	if worker == nil {
@@ -117,7 +118,7 @@ func NewSimpleServer(nodeID string, listenAddr string) *ClientApp {
 	node.register()
 
 	fmt.Printf("Server Node '%s' started on %s\n", nodeID, listenAddr)
-	return &ClientApp{Node: node, Worker: worker, Token: defaultToken}
+	return &ClientApp{Node: node, Worker: worker, Token: "default_token"}
 }
 
 func NewSimpleClient(nodeID string, remoteAddr string) *ClientApp {
@@ -132,12 +133,12 @@ func NewSimpleClient(nodeID string, remoteAddr string) *ClientApp {
 		localAddr,
 		remoteAddr,
 		nil,
-		defaultMaxFrameSize,
-		defaultMaxInactiveSeconds,
-		defaultMaxSendQueueSize,
-		defaultMaxConnectionsPerSec,
+		4096,
+		10,
+		1000,
+		5,
 		nil,
-		defaultToken,
+		"default_token",
 	)
 
 	if worker == nil {
@@ -151,7 +152,7 @@ func NewSimpleClient(nodeID string, remoteAddr string) *ClientApp {
 	node.register()
 
 	fmt.Printf("Client Node '%s' connected to %s\n", nodeID, remoteAddr)
-	return &ClientApp{Node: node, Worker: worker, Token: defaultToken}
+	return &ClientApp{Node: node, Worker: worker, Token: "default_token"}
 }
 
 func (app *ClientApp) Subscribe(topic, clientName string, cb MESSAGE_CALLBACK) {

@@ -5,31 +5,18 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/api/apis.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/Nginx.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Channel.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Channel.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/ChannelWorker.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Constants.go" beforeDir="false" afterPath="$PROJECT_DIR$/common/Constants.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/FRPStreamStub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStreamStub.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/FRPStubManager.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStubManager.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/FakeClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FakeClient.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Link.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Link.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/MajulaClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/MajulaClient.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/MajulaServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/MajulaServer.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Message.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Message.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/NaiveTestEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/NaiveTestEnv.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RPC.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/SimpleChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/SimpleChannelWorker.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/SimpleClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/SimpleClient.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/SimpleEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/SimpleEnv.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/SimpleLink.go" beforeDir="false" afterPath="$PROJECT_DIR$/example/SimpleLink.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/TCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TCPChannelWorker.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/TcpEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TcpEnv.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Tools.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Tools.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Topic.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Topic.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/MajulaClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/MajulaClient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/common/Constants.go" beforeDir="false" afterPath="$PROJECT_DIR$/common/Constants.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/FRPStreamStub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStreamStub.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/FakeClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FakeClient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/MajulaServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/MajulaServer.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/NaiveTestEnv.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/NaiveTestEnv.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RPC.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/SimpleClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/SimpleClient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/TCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TCPChannelWorker.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -56,42 +43,45 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;DefaultGoTemplateProperty&quot;: &quot;Go File&quot;,
-    &quot;Go Test.TestAAA in Majula/core.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestCallAllRpcsViaWs in Majula (1).executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestCallAllRpcsViaWs in Majula (2).executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestCallAllRpcsViaWs in Majula.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestClientServerCommunication in Majula.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestFrpCommunicationBetweenNodes in Majula (1).executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestFrpCommunicationBetweenNodes in Majula.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestFrpCommunicationBetweenNodes in Majula/core.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestFrpDynamicFileTransfer in Majula/core.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestFrpDynamicTunnel in Majula/core.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestFrpFileTransfer in Majula.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestRpcCommunication in Majula.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestWebSocketRpc in Majula.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestWebSocketRpcCallToNodeRegisteredService in Majula.executor&quot;: &quot;Run&quot;,
-    &quot;Go Test.TestWindowBufferAdvance in Majula.executor&quot;: &quot;Run&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.GoLinterPluginOnboarding&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.GoLinterPluginStorageMigration&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.go.formatter.settings.were.checked&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.go.migrated.go.modules.settings&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.go.modules.go.list.on.any.changes.was.set&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;go.import.settings.migrated&quot;: &quot;true&quot;,
-    &quot;go.sdk.automatically.set&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;E:/GolangProjects/Majula&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "DefaultGoTemplateProperty": "Go File",
+    "Go Test.TestAAA in Majula/core.executor": "Run",
+    "Go Test.TestCallAllRpcsViaWs in Majula (1).executor": "Run",
+    "Go Test.TestCallAllRpcsViaWs in Majula (2).executor": "Run",
+    "Go Test.TestCallAllRpcsViaWs in Majula.executor": "Run",
+    "Go Test.TestClientServerCommunication in Majula.executor": "Run",
+    "Go Test.TestFrpCommunicationBetweenNodes in Majula (1).executor": "Run",
+    "Go Test.TestFrpCommunicationBetweenNodes in Majula.executor": "Run",
+    "Go Test.TestFrpCommunicationBetweenNodes in Majula/core.executor": "Run",
+    "Go Test.TestFrpDynamicFileTransfer in Majula/core.executor": "Run",
+    "Go Test.TestFrpDynamicTunnel in Majula/core (1).executor": "Run",
+    "Go Test.TestFrpDynamicTunnel in Majula/core (2).executor": "Run",
+    "Go Test.TestFrpDynamicTunnel in Majula/core (3).executor": "Run",
+    "Go Test.TestFrpDynamicTunnel in Majula/core.executor": "Run",
+    "Go Test.TestFrpFileTransfer in Majula.executor": "Run",
+    "Go Test.TestRpcCommunication in Majula.executor": "Run",
+    "Go Test.TestWebSocketRpc in Majula.executor": "Run",
+    "Go Test.TestWebSocketRpcCallToNodeRegisteredService in Majula.executor": "Run",
+    "Go Test.TestWindowBufferAdvance in Majula.executor": "Run",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.GoLinterPluginOnboarding": "true",
+    "RunOnceActivity.GoLinterPluginStorageMigration": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.go.formatter.settings.were.checked": "true",
+    "RunOnceActivity.go.migrated.go.modules.settings": "true",
+    "RunOnceActivity.go.modules.go.list.on.any.changes.was.set": "true",
+    "git-widget-placeholder": "master",
+    "go.import.settings.migrated": "true",
+    "go.sdk.automatically.set": "true",
+    "last_opened_file_path": "E:/GolangProjects/Majula",
+    "node.js.detected.package.eslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="E:\GolangProjects\Majula" />
@@ -103,31 +93,7 @@
       <recent name="E:\GolangProjects\Majula\common" />
     </key>
   </component>
-  <component name="RunManager" selected="Go Test.TestFrpDynamicFileTransfer in Majula/core">
-    <configuration name="TestAAA in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
-      <module name="Majula" />
-      <working_directory value="$PROJECT_DIR$/core" />
-      <root_directory value="$PROJECT_DIR$" />
-      <kind value="PACKAGE" />
-      <package value="Majula/core" />
-      <directory value="$PROJECT_DIR$" />
-      <filePath value="$PROJECT_DIR$" />
-      <framework value="gotest" />
-      <pattern value="^\QTestAAA\E$" />
-      <method v="2" />
-    </configuration>
-    <configuration name="TestFrpCommunicationBetweenNodes in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
-      <module name="Majula" />
-      <working_directory value="$PROJECT_DIR$/core" />
-      <root_directory value="$PROJECT_DIR$" />
-      <kind value="PACKAGE" />
-      <package value="Majula/core" />
-      <directory value="$PROJECT_DIR$" />
-      <filePath value="$PROJECT_DIR$" />
-      <framework value="gotest" />
-      <pattern value="^\QTestFrpCommunicationBetweenNodes\E$" />
-      <method v="2" />
-    </configuration>
+  <component name="RunManager" selected="Go Test.TestFrpDynamicTunnel in Majula/core (3)">
     <configuration name="TestFrpDynamicFileTransfer in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="Majula" />
       <working_directory value="$PROJECT_DIR$/core" />
@@ -138,6 +104,42 @@
       <filePath value="$PROJECT_DIR$" />
       <framework value="gotest" />
       <pattern value="^\QTestFrpDynamicFileTransfer\E$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="TestFrpDynamicTunnel in Majula/core (1)" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="Majula" />
+      <working_directory value="$PROJECT_DIR$/core" />
+      <root_directory value="$PROJECT_DIR$" />
+      <kind value="PACKAGE" />
+      <package value="Majula/core" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
+      <pattern value="^\QTestFrpDynamicTunnel\E$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="TestFrpDynamicTunnel in Majula/core (2)" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="Majula" />
+      <working_directory value="$PROJECT_DIR$/core" />
+      <root_directory value="$PROJECT_DIR$" />
+      <kind value="PACKAGE" />
+      <package value="Majula/core" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
+      <pattern value="^\QTestFrpDynamicTunnel\E$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="TestFrpDynamicTunnel in Majula/core (3)" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="Majula" />
+      <working_directory value="$PROJECT_DIR$/core" />
+      <root_directory value="$PROJECT_DIR$" />
+      <kind value="PACKAGE" />
+      <package value="Majula/core" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
+      <pattern value="^\QTestFrpDynamicTunnel\E$" />
       <method v="2" />
     </configuration>
     <configuration name="TestFrpDynamicTunnel in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
@@ -152,24 +154,13 @@
       <pattern value="^\QTestFrpDynamicTunnel\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="TestFrpFileTransfer in Majula" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
-      <module name="Majula" />
-      <working_directory value="$PROJECT_DIR$" />
-      <kind value="PACKAGE" />
-      <package value="Majula" />
-      <directory value="$PROJECT_DIR$" />
-      <filePath value="$PROJECT_DIR$" />
-      <framework value="gotest" />
-      <pattern value="^\QTestFrpFileTransfer\E$" />
-      <method v="2" />
-    </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Go Test.TestFrpDynamicTunnel in Majula/core (3)" />
+        <item itemvalue="Go Test.TestFrpDynamicTunnel in Majula/core (2)" />
+        <item itemvalue="Go Test.TestFrpDynamicTunnel in Majula/core (1)" />
         <item itemvalue="Go Test.TestFrpDynamicFileTransfer in Majula/core" />
         <item itemvalue="Go Test.TestFrpDynamicTunnel in Majula/core" />
-        <item itemvalue="Go Test.TestAAA in Majula/core" />
-        <item itemvalue="Go Test.TestFrpCommunicationBetweenNodes in Majula/core" />
-        <item itemvalue="Go Test.TestFrpFileTransfer in Majula" />
       </list>
     </recent_temporary>
   </component>

@@ -183,7 +183,7 @@ func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun str
 		},
 		From:       node.ID,
 		To:         peer,
-		TTL:        100,
+		TTL:        common.DefaultMessageTTL,
 		InvokeId:   cId,
 		LastSender: node.ID,
 	}
@@ -316,7 +316,7 @@ func (node *Node) handleRpcRequest(msg *Message) {
 		},
 		From:       node.ID,
 		To:         msg.From,
-		TTL:        100,
+		TTL:        common.DefaultMessageTTL,
 		InvokeId:   msg.InvokeId,
 		LastSender: node.ID,
 	}
@@ -341,7 +341,7 @@ func (node *Node) sendRpcErrorResponse(msg *Message, fun string, errMsg string) 
 		},
 		From:       node.ID,
 		To:         msg.From,
-		TTL:        100,
+		TTL:        common.DefaultMessageTTL,
 		InvokeId:   msg.InvokeId,
 		LastSender: node.ID,
 	}

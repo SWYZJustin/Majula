@@ -1,6 +1,5 @@
 package api
 
-import "C"
 import (
 	"context"
 	"encoding/json"

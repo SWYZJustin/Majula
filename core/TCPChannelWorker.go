@@ -1,15 +1,17 @@
 package core
 
 import (
+	"Majula/common"
 	"bufio"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 type TcpLink struct {
@@ -118,11 +120,11 @@ func NewTcpConnection(name string, isClient bool, localAddr string, remoteAddr s
 		MaxSendQueueSize:       maxSendQueueSize,
 		MaxConnectionPerSecond: maxConnectionPerSeconds,
 		MaxInactiveTime:        maxInactiveDlt,
-		MaxRegistrationTime:    10,
+		MaxRegistrationTime:    int64(common.MaxRegistrationTime),
 		Token:                  pToken,
 		Done:                   make(chan bool),
 	}
-	ret.RecvPackagesChan = make(chan IpPackage, 64)
+	ret.RecvPackagesChan = make(chan IpPackage, common.ChannelQueueSizeSmall)
 	// 如果是server，就开始监听
 	if !isClient {
 		ret.Listener = listener
@@ -242,10 +244,10 @@ func (this *TcpChannelWorker) RegisterTcpLink(conn net.Conn, accepted bool) *Tcp
 		StartTime:          time.Now().Unix(),
 		LinkConn:           conn,
 		Accepted:           accepted,
-		ImportantWriteChan: make(chan []byte, 64),
+		ImportantWriteChan: make(chan []byte, common.ChannelQueueSizeSmall),
 		NormalWriteChan: make(chan []byte, func() int {
 			if this.MaxSendQueueSize <= 0 {
-				return 64
+				return common.ChannelQueueSizeSmall
 			}
 			return this.MaxSendQueueSize
 		}()),

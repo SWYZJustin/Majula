@@ -1,6 +1,7 @@
 package core
 
 import (
+	"Majula/common"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -169,17 +170,6 @@ func (wb *WindowBuffer) CanPut(seq int64) bool {
 	return seq >= wb.startSeq && seq < wb.startSeq+int64(wb.size)
 }
 
-const (
-	MAX_SEND_WINDOW_SIZE = 7024
-	MAX_RETRY_COUNT      = 5
-	ACK_TIMEOUT          = 5 * time.Second
-)
-
-const RECV_ACK_THRESHOLD = 128
-const RECV_ACK_TIMEOUT = 200 * time.Millisecond
-const SEND_RESEND_TIMEOUT = 200 * time.Millisecond
-const maxResendPerCall = 100
-
 type FRPDataPayload struct {
 	TargetStubID string `json:"stub_id"`
 	Seq          int64  `json:"seq"`
@@ -314,7 +304,7 @@ func (stub *StreamStub) sendData(seq int64, data []byte) {
 		},
 		From:       stub.myNodeId,
 		To:         stub.peerNodeId,
-		TTL:        100,
+		TTL:        common.DefaultMessageTTL,
 		LastSender: stub.myNodeId,
 	}
 
@@ -341,7 +331,7 @@ func (stub *StreamStub) onData(content []byte) {
 
 	progress := false
 	startSeq := stub.recvSeq + 1
-	for seq := startSeq; seq < startSeq+MAX_SEND_WINDOW_SIZE; seq++ {
+	for seq := startSeq; seq < startSeq+int64(common.MaxSendWindowSize); seq++ {
 		data, ok := stub.recvWindow.Get(seq)
 		if !ok {
 			break
@@ -356,7 +346,7 @@ func (stub *StreamStub) onData(content []byte) {
 
 	if !progress {
 		sent := 0
-		for seq := stub.recvSeq + 1; seq < payload.Seq && sent < maxResendPerCall; seq++ {
+		for seq := stub.recvSeq + 1; seq < payload.Seq && sent < common.MaxResendPerCall; seq++ {
 			if !stub.recvWindow.IsFilled(seq) {
 				stub.sendResendRequest(seq)
 				sent++
@@ -370,7 +360,7 @@ func (stub *StreamStub) onData(content []byte) {
 		stub.sendAck()
 	case "delayed":
 		stub.recvSinceLastAck++
-		if stub.recvSinceLastAck >= RECV_ACK_THRESHOLD || now.Sub(stub.lastAckTime) >= RECV_ACK_TIMEOUT {
+		if stub.recvSinceLastAck >= int64(common.RecvAckThreshold) || now.Sub(stub.lastAckTime) >= common.RecvAckTimeout {
 			stub.sendAck()
 			stub.recvSinceLastAck = 0
 			stub.lastAckTime = now
@@ -395,7 +385,7 @@ func (stub *StreamStub) sendAck() {
 		},
 		From:       stub.myNodeId,
 		To:         stub.peerNodeId,
-		TTL:        100,
+		TTL:        common.DefaultMessageTTL,
 		LastSender: stub.myNodeId,
 	}
 	stub.DebugPrint("stub "+stub.myId+"sendAck", ackMsg.Print())
@@ -422,7 +412,7 @@ func (stub *StreamStub) onAck(content []byte) {
 
 func (stub *StreamStub) onClose() {
 	stub.DebugPrint("stub "+stub.myId+"close", "")
-	stub.lazyClose(time.Second * 5)
+	stub.lazyClose(common.AckTimeout)
 }
 
 func (stub *StreamStub) doClose() {
@@ -434,11 +424,11 @@ func (stub *StreamStub) doClose() {
 		},
 		From: stub.myNodeId,
 		To:   stub.peerNodeId,
-		TTL:  100,
+		TTL:  common.DefaultMessageTTL,
 	}
 	stub.DebugPrint("stub "+stub.myId+"sendClose", msg.Print())
 	stub.node.sendTo(stub.peerNodeId, msg)
-	stub.lazyClose(time.Second * 5)
+	stub.lazyClose(common.AckTimeout)
 }
 
 func (stub *StreamStub) retryLoop(ctx context.Context) {
@@ -470,7 +460,7 @@ func (stub *StreamStub) resendUnackedData() {
 		}
 
 		if stub.fastConnect {
-			if retries >= MAX_RETRY_COUNT {
+			if retries >= common.MaxRetryCount {
 				fmt.Println("Too many retries, closing stream:", stub.myId)
 				fmt.Println("conn close due to too many retries")
 				stub.doClose()
@@ -479,7 +469,7 @@ func (stub *StreamStub) resendUnackedData() {
 		}
 
 		if stub.delayedResend {
-			if time.Since(sentAt) < ACK_TIMEOUT {
+			if time.Since(sentAt) < common.AckTimeout {
 				continue
 			}
 		}
@@ -499,8 +489,8 @@ func NewStreamStub(node *Node, conn net.Conn, myId, peerNodeId, peerStubId, myNo
 		peerNodeId: peerNodeId,
 		peerStubId: peerStubId,
 		myNodeId:   myNodeId,
-		recvWindow: NewWindowBuffer(1, MAX_SEND_WINDOW_SIZE),
-		sendWindow: NewWindowBuffer(1, MAX_SEND_WINDOW_SIZE),
+		recvWindow: NewWindowBuffer(1, common.MaxSendWindowSize),
+		sendWindow: NewWindowBuffer(1, common.MaxSendWindowSize),
 
 		cancel:           cancel,
 		recvSinceLastAck: 0,
@@ -509,7 +499,7 @@ func NewStreamStub(node *Node, conn net.Conn, myId, peerNodeId, peerStubId, myNo
 		sendWindowLock:   sync.Mutex{},
 
 		resendRequestedAt: make(map[int64]time.Time),
-		writeChan:         make(chan []byte, 8192),
+		writeChan:         make(chan []byte, common.ChannelQueueSizeLarge),
 
 		fastConnect:          false,
 		delayedResend:        false,
@@ -517,9 +507,9 @@ func NewStreamStub(node *Node, conn net.Conn, myId, peerNodeId, peerStubId, myNo
 
 		ackMode: "immediate",
 
-		inChan:        make(chan frpMessage, 8192),
+		inChan:        make(chan frpMessage, common.ChannelQueueSizeLarge),
 		lazyCloseOnce: sync.Once{},
-		readChan:      make(chan []byte, 8192),
+		readChan:      make(chan []byte, common.ChannelQueueSizeLarge),
 	}
 	stub.lastActivityTime.Store(time.Now())
 	stub.windowCond = sync.NewCond(&stub.sendWindowLock)
@@ -580,7 +570,7 @@ func (stub *StreamStub) sendResendRequest(seq int64) {
 	stub.sendWindowLock.Lock()
 	lastTime, requested := stub.resendRequestedAt[seq]
 	if stub.delayedResendRequest {
-		if requested && time.Since(lastTime) < SEND_RESEND_TIMEOUT {
+		if requested && time.Since(lastTime) < common.SendResendTimeout {
 			stub.sendWindowLock.Unlock()
 			return
 		}
@@ -601,7 +591,7 @@ func (stub *StreamStub) sendResendRequest(seq int64) {
 		},
 		From:       stub.myNodeId,
 		To:         stub.peerNodeId,
-		TTL:        100,
+		TTL:        common.DefaultMessageTTL,
 		LastSender: stub.myNodeId,
 	}
 	stub.DebugPrint("stub "+stub.myId+"sendResendRequest", msg.Print())
@@ -622,7 +612,7 @@ func (stub *StreamStub) onResendRequest(content []byte) {
 	stub.sendWindowLock.Unlock()
 	if stub.delayedResend {
 		if stub.delayedResend {
-			if time.Since(sentAt) < ACK_TIMEOUT {
+			if time.Since(sentAt) < common.AckTimeout {
 				return
 			}
 		}
@@ -659,7 +649,7 @@ func (stub *StreamStub) writeLoop(ctx context.Context) {
 }
 
 func (stub *StreamStub) idleMonitorLoop(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(common.AckTimeout)
 	defer ticker.Stop()
 
 	for {
@@ -720,8 +710,6 @@ func (stub *StreamStub) lazyClose(timeout time.Duration) {
 			defer ticker.Stop()
 			for {
 				select {
-				case <-stub.cancelCtx.Done():
-					return
 				case <-ticker.C:
 					lastAny := stub.lastActivityTime.Load().(time.Time)
 					if time.Since(lastAny) > timeout {
@@ -735,4 +723,22 @@ func (stub *StreamStub) lazyClose(timeout time.Duration) {
 			}
 		}()
 	})
+}
+
+func (stub *StreamStub) Close() {
+	stub.lazyClose(common.AckTimeout)
+}
+
+func (stub *StreamStub) startResendLoop() {
+	ticker := time.NewTicker(common.AckTimeout)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stub.cancelCtx.Done():
+			return
+		case <-ticker.C:
+			stub.resendUnackedData()
+		}
+	}
 }
