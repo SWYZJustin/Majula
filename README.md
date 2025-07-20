@@ -5,6 +5,7 @@ Majula is a lightweight, distributed communication middleware written in Go. It 
 The name Majula comes from Dark Souls II. It represents the Firelink Shrine in that game and probably the warmest place in the Souls series. People meet in adventures and come togather around the Firelink Shrine. I hope my middleware can help connect people as well — or more likely, the devices.
 
 Moreover, super excited to roll out v1.0. It is a version that the basic functionalities inside my mind come to place and could work through simple tests, More debugs and improvements on the way.
+
 ---
 
 ## 🌟 Features
