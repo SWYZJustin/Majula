@@ -16,7 +16,7 @@ import (
 
 type MESSAGE_CALLBACK func(topic string, from string, to string, content []byte)
 
-// 设定的常用类型昵称
+// Node 设定的常用类型昵称
 type Node struct { // Node
 	ID           string               // Node的id，每个node独有
 	NodePeers    map[string]*NodePeer // map[直接连接的nodeId]nodePeer
@@ -72,6 +72,8 @@ type SubscriptionInfo struct {
 	Topics []string `json:"topics"`
 }
 
+// 添加本地订阅。
+// 参数：pTopic - 主题，pClientName - 客户端名，cb - 回调函数。
 func (node *Node) addLocalSub(pTopic string, pClientName string, cb MESSAGE_CALLBACK) {
 	node.DebugPrint("addLocalSub", fmt.Sprintf("topic=%s client=%s", pTopic, pClientName))
 	node.MySubsMutex.Lock()
@@ -107,6 +109,8 @@ func (node *Node) addLocalSub(pTopic string, pClientName string, cb MESSAGE_CALL
 	}
 }
 
+// 移除本地订阅。
+// 参数：pTopic - 主题，pClientName - 客户端名。
 func (node *Node) removeLocalSub(pTopic string, pClientName string) {
 	node.DebugPrint("removeLocalSub", fmt.Sprintf("topic=%s client=%s", pTopic, pClientName))
 	node.MySubsMutex.Lock()
@@ -139,6 +143,8 @@ func (node *Node) removeLocalSub(pTopic string, pClientName string) {
 	}
 }
 
+// 清理某个客户端的所有订阅。
+// 参数：clientID - 客户端ID。
 func (node *Node) clearSubClient(clientID string) {
 	node.MySubsMutex.RLock()
 	var topics []string
@@ -154,6 +160,8 @@ func (node *Node) clearSubClient(clientID string) {
 	}
 }
 
+// 处理主题初始化消息。
+// 参数：msg - 消息。
 func (node *Node) handleTopicInit(msg *Message) {
 	topic := msg.Data
 	sender := msg.From
@@ -185,6 +193,8 @@ func (node *Node) handleTopicInit(msg *Message) {
 	}
 }
 
+// 处理主题退出消息。
+// 参数：msg - 消息。
 func (node *Node) handleTopicExit(msg *Message) {
 	topic := msg.Data
 	sender := msg.From
@@ -213,6 +223,8 @@ func (node *Node) handleTopicExit(msg *Message) {
 	}
 }
 
+// 在指定主题上发布消息。
+// 参数：pTopic - 主题，pMessage - 消息内容。
 func (node *Node) publishOnTopic(pTopic string, pMessage string) {
 	node.DebugPrint("publishOnTopic", fmt.Sprintf("topic=%s msg=%s", pTopic, pMessage))
 	node.MySubsMutex.RLock()
@@ -282,7 +294,8 @@ const (
 	SimpleWorker
 )
 
-// 将link转成字符串传输
+// 将link集合序列化为字符串。
+// 返回：序列化后的字符串。
 func (node *Node) serializeLinkSet() string {
 	node.LinkSetMutex.RLock()
 	defer node.LinkSetMutex.RUnlock()
@@ -306,7 +319,9 @@ func (node *Node) serializeLinkSet() string {
 	return string(data)
 }
 
-// link字符串解析
+// 反序列化link集合字符串为LinkSetType。
+// 参数：linkSetStr - 序列化字符串。
+// 返回：LinkSetType对象。
 func deserializeLinkSet(linkSetStr string) LinkSetType {
 	var linkSet LinkSetType
 	err := json.Unmarshal([]byte(linkSetStr), &linkSet)
@@ -322,7 +337,7 @@ type RouteEntry struct { //路由表的一项
 	nextHopNodeID  string
 }
 
-// 打印路由表
+// 打印当前节点的路由表。
 func (node *Node) printRoutingTable() {
 	fmt.Printf("%s的路由表:\n", node.ID)
 	if node.RoutingTable == nil || len(node.RoutingTable) == 0 {
@@ -347,6 +362,8 @@ const (
 	Inactive
 )
 
+// DebugPrint Debug调试打印。
+// 参数：name - 调用者名称，message - 信息内容。
 func (n *Node) DebugPrint(name string, message string) {
 	if !common.DebugPrint {
 		return
@@ -359,7 +376,9 @@ type NodePeer struct {
 	Status         NodeStatus
 }
 
-// 新建一个Node，但是包括相关的参数
+// NewNodeWithChannel 新建一个带通道的Node实例。
+// 参数：pID - 节点ID，pChannels - 通道集合。
+// 返回：*Node 新建的节点。
 func NewNodeWithChannel(pID string, pChannels map[string]*Channel) *Node {
 	HBctx, HBcancel := context.WithCancel(context.Background())
 	aNode := Node{
@@ -405,7 +424,9 @@ func NewNodeWithChannel(pID string, pChannels map[string]*Channel) *Node {
 	return &aNode
 }
 
-// 完全新建Node
+// NewNode 完全新建一个Node实例。
+// 参数：pID - 节点ID。
+// 返回：*Node 新建的节点。
 func NewNode(pID string) *Node {
 	HBctx, HBcancel := context.WithCancel(context.Background())
 	aNode := Node{
@@ -450,19 +471,24 @@ func NewNode(pID string) *Node {
 	return &aNode
 }
 
+// 增加全局链路版本号。
 func (this *Node) addGlobalLinkVersion() {
 	atomic.AddInt64(&this.MyLinksVersion, 1)
 }
 
+// 增加调用ID。
 func (this *Node) addInvokedId() {
 	atomic.AddInt64(&this.InvokedId, 1)
 }
 
+// 设置全局链路版本号。
+// 参数：newVersion - 新的版本号。
 func (this *Node) setGlobalLinkVersion(newVersion int64) {
 	atomic.AddInt64(&this.MyLinksVersion, newVersion)
 }
 
-// 为一个Node添加一个Channel，channel的id是由node分配的
+// AddChannel 为Node添加一个Channel。
+// 参数：pChannel - 要添加的通道。
 func (node *Node) AddChannel(pChannel *Channel) {
 	channelID := fmt.Sprintf("%s-%d", node.ID, len(node.Channels)+1)
 	pChannel.ID = channelID
@@ -470,11 +496,14 @@ func (node *Node) AddChannel(pChannel *Channel) {
 	node.Channels[channelID] = pChannel
 }
 
-// 获取一个channel
+// GetChannel 获取指定ID的Channel。
+// 参数：channelID - 通道ID。
+// 返回：*Channel。
 func (node *Node) GetChannel(channelID string) *Channel {
 	return node.Channels[channelID]
 }
 
+// PrintAllChannels 打印所有Channel信息。
 func (node *Node) PrintAllChannels() {
 	node.DebugPrint("PrintAllChannels", "start")
 	for _, channel := range node.Channels {
@@ -482,12 +511,12 @@ func (node *Node) PrintAllChannels() {
 	}
 }
 
-// 增加消息累积数
+// 增加消息版本计数。
 func (node *Node) addMessageCounter() {
 	atomic.AddInt64(&node.MessageVersionCounter, 1)
 }
 
-// 注册一个node，即让它开始运行
+// Register 注册并启动Node。
 func (node *Node) Register() {
 	node.DebugPrint("Register", "start")
 	node.hello()
@@ -505,7 +534,7 @@ func (node *Node) Register() {
 	go node.RegisterFileTransferRPCs()
 }
 
-// 使一个node退出
+// Quit 使Node退出，关闭所有服务。
 func (node *Node) Quit() {
 	node.DebugPrint("Quit", "start")
 	node.sendQuit()
@@ -518,7 +547,8 @@ func (node *Node) Quit() {
 	node.WsServers = nil
 }
 
-// 将一条消息发送，可指定channelId，不然就是从路由表找
+// 发送消息到目标节点，可指定通道。
+// 参数：targetId - 目标节点ID，msg - 消息，channelID - 可选通道ID。
 func (node *Node) sendTo(targetId string, msg *Message, channelID ...string) {
 	//Node.DebugPrint(msg.Print(), DebugSend)
 	msg.VersionSeq = uint64(atomic.LoadInt64(&node.MessageVersionCounter))
@@ -553,7 +583,8 @@ func (node *Node) sendTo(targetId string, msg *Message, channelID ...string) {
 	go channel.send(nextHopID, msg)
 }
 
-// 将一条消息添加到消息重发队列
+// 将消息添加到重发队列。
+// 参数：msg - 消息。
 func (node *Node) addToRetryQueue(msg *Message) {
 	node.RetryMutex.Lock()
 	defer node.RetryMutex.Unlock()
@@ -561,12 +592,15 @@ func (node *Node) addToRetryQueue(msg *Message) {
 	node.RetryQueue = append(node.RetryQueue, msg)
 }
 
-// 生成一个messageKey用于查重
+// 生成消息唯一key用于查重。
+// 参数：msg - 消息。
+// 返回：唯一key字符串。
 func (node *Node) generateMsgKey(msg *Message) string {
 	return fmt.Sprintf("%s-%d-%d", msg.From, msg.VersionSeq, msg.MessageData.Type)
 }
 
-// bundlesend是用来处理topic发送的
+// 处理topic bundle消息转发。
+// 参数：originalMsg - 原始消息，topic - 主题，payload - 内容。
 func (node *Node) handleBundle(originalMsg *Message, topic, payload string) {
 	newBundle := map[string][]string{}
 	node.MySubsMutex.RLock()
@@ -598,7 +632,8 @@ func (node *Node) handleBundle(originalMsg *Message, topic, payload string) {
 	}
 }
 
-// 接受消息
+// 处理接收到的消息，包含查重、分发等。
+// 参数：peerId - 发送方ID，msg - 消息。
 func (node *Node) onRecv(peerId string, msg *Message) {
 	node.DebugPrint("onRecv", msg.Print())
 	if msg.Type == Other {
@@ -776,6 +811,8 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 	}
 }
 
+// 处理心跳消息，更新邻居节点活跃状态和链路集合。
+// 参数：msg - 心跳消息。
 func (node *Node) handleHeartbeat(msg *Message) {
 	from := msg.From
 	now := time.Now()
@@ -815,7 +852,7 @@ func (node *Node) handleHeartbeat(msg *Message) {
 	node.LinkSetMutex.Unlock()
 }
 
-// 开始一个重复发送的循环
+// 启动消息重发循环。
 func (node *Node) startRetryLoop() {
 	for {
 		select {
@@ -836,7 +873,7 @@ func (node *Node) startRetryLoop() {
 	}
 }
 
-// 定期清空消息记录
+// 定期清理已接收消息的缓存。
 func (node *Node) cleanupReceivedMsgs() {
 	for {
 		select {
@@ -853,6 +890,7 @@ func (node *Node) cleanupReceivedMsgs() {
 	}
 }
 
+// 广播hello消息，通知网络中其他节点。
 func (node *Node) hello() {
 	msg := &Message{
 		MessageData: MessageData{
@@ -872,7 +910,7 @@ func (node *Node) hello() {
 	}
 }
 
-// 发送心跳，连带着linkset的信息
+// 定时发送心跳包，附带链路信息。
 func (node *Node) heartbeat() {
 	ticker := time.NewTicker(common.HeartBeatTimePeriod)
 	defer ticker.Stop()
@@ -902,7 +940,8 @@ func (node *Node) heartbeat() {
 	}
 }
 
-// 发送退出信息
+// 向指定节点发送退出请求。
+// 参数：peerId - 目标节点ID。
 func (node *Node) sendQuitRequest(peerId string) {
 	msg := &Message{
 		MessageData: MessageData{
@@ -919,6 +958,7 @@ func (node *Node) sendQuitRequest(peerId string) {
 	node.sendTo(peerId, msg)
 }
 
+// 向所有邻居节点发送退出请求。
 func (node *Node) sendQuit() {
 
 	node.NodePeersMutex.RLock()
@@ -928,7 +968,9 @@ func (node *Node) sendQuit() {
 	}
 }
 
-// 更新link的代价，并且更新linkset
+// 更新与指定节点的链路代价。
+// 参数：peerId - 邻居节点ID，cost - 新代价。
+// 返回：错误信息（如有）。
 func (node *Node) updateLinkCost(peerId string, cost int64) error {
 	node.LinkSetMutex.Lock()
 	defer node.LinkSetMutex.Unlock()
@@ -945,7 +987,7 @@ func (node *Node) updateLinkCost(peerId string, cost int64) error {
 	return nil
 }
 
-// 构建路由表
+// 定时构建路由表和检查链路。
 func (node *Node) buildUp() {
 	ticker := time.NewTicker(common.BuildUpTimePeriod)
 	defer ticker.Stop()
@@ -965,6 +1007,7 @@ func (node *Node) buildUp() {
 	}
 }
 
+// 检查并移除过期链路。
 func (node *Node) checkOutOfDateLinks() {
 	keysToDelete := make(map[string]map[string]bool)
 
@@ -996,7 +1039,7 @@ func (node *Node) checkOutOfDateLinks() {
 
 }
 
-// 用最短路径算法计算路由表
+// 用最短路径算法构建路由表。
 func (node *Node) buildRoutingTable() {
 	node.LinkSetMutex.Lock()
 	defer node.LinkSetMutex.Unlock()
@@ -1067,7 +1110,9 @@ func (node *Node) buildRoutingTable() {
 	}
 }
 
-// 比较新建路由表和旧路由表
+// 比较新旧路由表是否一致。
+// 参数：tempTable - 新路由表。
+// 返回：是否一致。
 func (node *Node) compareRoutingTables(tempTable RoutingTableType) bool {
 	if len(node.RoutingTable) != len(tempTable) {
 		return false
@@ -1088,6 +1133,7 @@ func (node *Node) compareRoutingTables(tempTable RoutingTableType) bool {
 	return true
 }
 
+// 收集所有链路信息，补全LinkSet。
 func (node *Node) collectLinkPaths() {
 	for channelID, channel := range node.Channels {
 		for peerID := range channel.ChannelPeers {
@@ -1115,12 +1161,14 @@ func (node *Node) collectLinkPaths() {
 	}
 }
 
+// CheckPeersNew 检查所有通道的邻居节点。
 func (node *Node) CheckPeersNew() {
 	for _, channel := range node.Channels {
 		go channel.checkCost()
 	}
 }
 
+// 定时收集并检查邻居节点。
 func (node *Node) collectAndCheckPeers() {
 	ticker := time.NewTicker(common.CostCheckTimePeriod)
 	defer ticker.Stop()
@@ -1136,6 +1184,8 @@ func (node *Node) collectAndCheckPeers() {
 	}
 }
 
+// 从通道更新链路信息。
+// 参数：link - 新链路。
 func (node *Node) linkUpdateFromChannel(link Link) {
 	node.DebugPrint("linkupdate", link.printLinkS())
 	node.LinkSetMutex.Lock()
@@ -1156,6 +1206,7 @@ func (node *Node) linkUpdateFromChannel(link Link) {
 	}
 }
 
+// 广播本地所有订阅信息。
 func (node *Node) floodAllSubscriptions() {
 	node.MySubsMutex.RLock()
 	topics := make([]string, 0, len(node.MySubs))
@@ -1191,6 +1242,8 @@ func (node *Node) floodAllSubscriptions() {
 	}
 }
 
+// 处理订阅Flood消息，更新订阅表。
+// 参数：msg - Flood消息。
 func (node *Node) handleSubscribeFlood(msg *Message) {
 	var info SubscriptionInfo
 	err := json.Unmarshal([]byte(msg.MessageData.Data), &info)
@@ -1222,7 +1275,7 @@ func (node *Node) handleSubscribeFlood(msg *Message) {
 	}
 }
 
-// 周期性广播本地订阅的 Flood 逻辑
+// 启动周期性订阅Flood广播。
 func (node *Node) startSubscriptionFloodLoop() {
 	ticker := time.NewTicker(common.SubscribeFloodTicket)
 	defer ticker.Stop()
@@ -1236,6 +1289,7 @@ func (node *Node) startSubscriptionFloodLoop() {
 	}
 }
 
+// PrintTotalSubs 打印所有订阅总表。
 func (node *Node) PrintTotalSubs() {
 	node.TotalSubsMutex.RLock()
 	defer node.TotalSubsMutex.RUnlock()
@@ -1251,6 +1305,8 @@ func (node *Node) PrintTotalSubs() {
 	}
 }
 
+// AddClient 添加客户端ID到本地列表。
+// 参数：clientID - 客户端ID。
 func (node *Node) AddClient(clientID string) {
 	node.ClientIDsMutex.Lock()
 	defer node.ClientIDsMutex.Unlock()
@@ -1263,6 +1319,8 @@ func (node *Node) AddClient(clientID string) {
 	node.ClientIDs = append(node.ClientIDs, clientID)
 }
 
+// RemoveClient 从本地列表移除客户端ID。
+// 参数：clientID - 客户端ID。
 func (node *Node) RemoveClient(clientID string) {
 	node.ClientIDsMutex.Lock()
 	newList := node.ClientIDs[:0]
@@ -1278,6 +1336,8 @@ func (node *Node) RemoveClient(clientID string) {
 	node.UnregisterRpcServicesByClient(clientID)
 }
 
+// UnregisterRpcServicesByClient 注销指定客户端的所有RPC服务。
+// 参数：clientID - 客户端ID。
 func (node *Node) UnregisterRpcServicesByClient(clientID string) {
 	node.RpcFuncsMutex.Lock()
 	defer node.RpcFuncsMutex.Unlock()
@@ -1293,6 +1353,8 @@ func (node *Node) UnregisterRpcServicesByClient(clientID string) {
 	}
 }
 
+// GetClientIDs 获取所有客户端ID。
+// 返回：客户端ID切片。
 func (node *Node) GetClientIDs() []string {
 	node.ClientIDsMutex.RLock()
 	defer node.ClientIDsMutex.RUnlock()
@@ -1302,6 +1364,7 @@ func (node *Node) GetClientIDs() []string {
 	return copyList
 }
 
+// PrintClients 打印所有客户端ID。
 func (node *Node) PrintClients() {
 	node.ClientIDsMutex.RLock()
 	defer node.ClientIDsMutex.RUnlock()
@@ -1316,12 +1379,16 @@ func (node *Node) PrintClients() {
 	}
 }
 
+// RegisterWSServer 注册WebSocket服务器。
+// 参数：server - 服务器实例。
 func (n *Node) RegisterWSServer(server *Server) {
 	n.WsServersMutex.Lock()
 	defer n.WsServersMutex.Unlock()
 	n.WsServers = append(n.WsServers, server)
 }
 
+// 启动HTTP服务器。
+// 参数：wsPort - 监听端口。
 func (n *Node) startHttpServer(wsPort string) {
 	server := NewServer(n, wsPort)
 	router := SetupRoutes(server)

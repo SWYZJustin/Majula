@@ -6,8 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -15,6 +13,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 var upgrader = websocket.Upgrader{
@@ -29,20 +30,40 @@ type ClientConnection struct {
 	ClientInvokeMap sync.Map
 }
 
-type Server struct {
-	Clients       map[string]*ClientConnection
-	Node          *Node
-	Lock          sync.RWMutex
-	ClientCounter int64
-	Port          string
+type pendingRpcEntry struct {
+	originInvokeId int64
+	fromClientId   string
+	ch             chan interface{}
 }
 
+// 生成下一个本地RPC调用ID。
+// 返回：自增的调用ID。
+func (s *Server) nextLocalInvokeId() int64 {
+	return atomic.AddInt64(&s.rpcInvokeCounter, 1)
+}
+
+// Server结构体，Majula服务端，管理所有客户端连接和RPC。
+type Server struct {
+	Clients          map[string]*ClientConnection
+	Node             *Node
+	Lock             sync.RWMutex
+	ClientCounter    int64
+	Port             string
+	pendingRpc       sync.Map
+	rpcInvokeCounter int64
+}
+
+// 创建一个新的Server实例。
+// 参数：node - 所属节点，wport - 监听端口。
+// 返回：*Server 新建的服务端对象。
 func NewServer(node *Node, wport string) *Server {
 	server := &Server{
-		Clients:       make(map[string]*ClientConnection),
-		Node:          node,
-		ClientCounter: 0,
-		Port:          wport,
+		Clients:          make(map[string]*ClientConnection),
+		Node:             node,
+		ClientCounter:    0,
+		Port:             wport,
+		pendingRpc:       sync.Map{},
+		rpcInvokeCounter: 0,
 	}
 
 	node.WsServersMutex.Lock()
@@ -52,6 +73,9 @@ func NewServer(node *Node, wport string) *Server {
 	return server
 }
 
+// 配置Gin路由，注册所有Majula相关接口。
+// 参数：server - Server实例。
+// 返回：*gin.Engine Gin引擎。
 func SetupRoutes(server *Server) *gin.Engine {
 	r := gin.Default()
 	r.Use(Cors())
@@ -71,6 +95,8 @@ func SetupRoutes(server *Server) *gin.Engine {
 	return r
 }
 
+// 处理WebSocket连接请求，建立客户端连接。
+// 参数：c - Gin上下文。
 func (s *Server) handleWS(c *gin.Context) {
 	target, _ := parseGinParameters(c)
 	clientID := target
@@ -102,6 +128,8 @@ func (s *Server) handleWS(c *gin.Context) {
 	go s.writeLoop(ctx, client)
 }
 
+// 客户端消息读取主循环。
+// 参数：ctx - 上下文，client - 客户端连接。
 func (s *Server) readLoop(ctx context.Context, client *ClientConnection) {
 	defer func() {
 		s.Lock.Lock()
@@ -132,6 +160,8 @@ func (s *Server) readLoop(ctx context.Context, client *ClientConnection) {
 	}
 }
 
+// 客户端消息写入主循环。
+// 参数：ctx - 上下文，client - 客户端连接。
 func (s *Server) writeLoop(ctx context.Context, client *ClientConnection) {
 	for {
 		select {
@@ -152,11 +182,15 @@ func (s *Server) writeLoop(ctx context.Context, client *ClientConnection) {
 	}
 }
 
+// 处理客户端注册包。
+// 参数：client - 客户端连接，pkg - 注册包。
 func (s *Server) handleClientRegisterPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	s.Node.AddClient(client.ID)
 	fmt.Println("Client registered:", client.ID)
 }
 
+// 处理客户端订阅包。
+// 参数：client - 客户端连接，pkg - 订阅包。
 func (s *Server) handleSubscribePackage(client *ClientConnection, pkg api.MajulaPackage) {
 	topic := pkg.Topic
 	if topic == "" {
@@ -173,6 +207,8 @@ func (s *Server) handleSubscribePackage(client *ClientConnection, pkg api.Majula
 	})
 }
 
+// 处理客户端取消订阅包。
+// 参数：client - 客户端连接，pkg - 取消订阅包。
 func (s *Server) handleUnsubscribePackage(client *ClientConnection, pkg api.MajulaPackage) {
 	topic := pkg.Topic
 	if topic == "" {
@@ -181,11 +217,15 @@ func (s *Server) handleUnsubscribePackage(client *ClientConnection, pkg api.Maju
 	s.Node.removeLocalSub(topic, client.ID)
 }
 
+// 处理客户端发布消息包。
+// 参数：client - 客户端连接，pkg - 发布包。
 func (s *Server) handlePublishPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	argsBytes, _ := json.Marshal(pkg.Args)
 	s.Node.publishOnTopic(pkg.Topic, string(argsBytes))
 }
 
+// 处理客户端发送消息包。
+// 参数：client - 客户端连接，pkg - 发送包。
 func (s *Server) handleSendPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	targetNode, ok1 := pkg.Args["target_node"].(string)
 	targetClient, ok2 := pkg.Args["target_client"].(string)
@@ -219,25 +259,61 @@ func (s *Server) handleSendPackage(client *ClientConnection, pkg api.MajulaPacka
 	s.Node.sendTo(targetNode, msg)
 }
 
+// 处理客户端RPC注册包。
+// 参数：client - 客户端连接，pkg - 注册包。
 func (s *Server) handleRPCRegisterPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	s.Node.registerRpcService(pkg.Fun, client.ID, RPC_FuncInfo{
 		Note: "Client registered RPC",
-	}, func(fun string, params map[string]interface{}, from string, to string, invokeId int64) interface{} {
+	}, func(fun string, params map[string]interface{}, from string, to string, originInvokeId int64) interface{} {
+		localInvokeId := s.nextLocalInvokeId()
+		ch := make(chan interface{}, 1)
+
+		s.pendingRpc.Store(localInvokeId, pendingRpcEntry{
+			originInvokeId: originInvokeId,
+			fromClientId:   from,
+			ch:             ch,
+		})
+
 		client.SendCh <- api.MajulaPackage{
 			Method:   "RPC_CALL_FROM_REMOTE",
 			Fun:      fun,
 			Args:     params,
-			InvokeId: invokeId,
+			InvokeId: localInvokeId,
 		}
-		return map[string]string{"status": "dispatched"}
+
+		select {
+		case result := <-ch:
+			s.pendingRpc.Delete(localInvokeId)
+			return result
+		case <-time.After(10 * time.Second):
+			s.pendingRpc.Delete(localInvokeId)
+			return map[string]interface{}{"error": "timeout waiting for result"}
+		}
 	})
 }
 
+// 处理客户端返回结果包。
+// 参数：client - 客户端连接，pkg - 结果包。
+func (s *Server) handleReturnResultPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	localInvokeId := pkg.InvokeId
+
+	if entryRaw, ok := s.pendingRpc.Load(localInvokeId); ok {
+		s.pendingRpc.Delete(localInvokeId)
+		if entry, ok := entryRaw.(pendingRpcEntry); ok {
+			entry.ch <- pkg.Result
+		}
+	}
+}
+
+// 处理客户端RPC注销包。
+// 参数：client - 客户端连接，pkg - 注销包。
 func (s *Server) handleRPCUnregisterPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	targetFun := pkg.Fun
 	s.Node.removeLocalSub(targetFun, client.ID)
 }
 
+// 处理客户端退出包。
+// 参数：client - 客户端连接，pkg - 退出包。
 func (s *Server) handleQuitPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	s.Node.RemoveClient(client.ID)
 	s.Lock.Lock()
@@ -245,6 +321,8 @@ func (s *Server) handleQuitPackage(client *ClientConnection, pkg api.MajulaPacka
 	s.Lock.Unlock()
 }
 
+// 处理客户端RPC调用包。
+// 参数：client - 客户端连接，pkg - 调用包。
 func (s *Server) handleRPCCallPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	clientInvokeId := pkg.InvokeId
 	fun := pkg.Fun
@@ -258,7 +336,7 @@ func (s *Server) handleRPCCallPackage(client *ClientConnection, pkg api.MajulaPa
 		errInfo := "missing target_node or provider in RPC call"
 		log.Println(errInfo)
 		client.SendCh <- api.MajulaPackage{
-			Method:   "",
+			Method:   "RPC_RESULT",
 			Fun:      fun,
 			InvokeId: clientInvokeId,
 			Result:   map[string]interface{}{"error": errInfo},
@@ -297,6 +375,8 @@ func (s *Server) handleRPCCallPackage(client *ClientConnection, pkg api.MajulaPa
 	}()
 }
 
+// 处理FRP注册包。
+// 参数：client - 客户端连接，pkg - 注册包。
 func (s *Server) handleFRPRegisterPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	code, ok1 := pkg.Args["code"].(string)
 	localAddr, ok2 := pkg.Args["local_addr"].(string)
@@ -314,6 +394,8 @@ func (s *Server) handleFRPRegisterPackage(client *ClientConnection, pkg api.Maju
 	}
 }
 
+// 处理FRP通过地址注册包。
+// 参数：client - 客户端连接，pkg - 注册包。
 func (s *Server) handleFRPRegisterWithAddrPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	localAddr, ok1 := pkg.Args["local_addr"].(string)
 	remoteAddr, ok2 := pkg.Args["remote_addr"].(string)
@@ -328,6 +410,8 @@ func (s *Server) handleFRPRegisterWithAddrPackage(client *ClientConnection, pkg 
 	}
 }
 
+// 处理FRP双向注册包。
+// 参数：client - 客户端连接，pkg - 注册包。
 func (s *Server) handleFRPRegisterTwoSidePackage(client *ClientConnection, pkg api.MajulaPackage) {
 	code, ok1 := pkg.Args["code"].(string)
 	remoteNode, ok2 := pkg.Args["remote_node"].(string)
@@ -344,6 +428,8 @@ func (s *Server) handleFRPRegisterTwoSidePackage(client *ClientConnection, pkg a
 	}
 }
 
+// 处理启动已注册FRP监听包。
+// 参数：client - 客户端连接，pkg - 启动包。
 func (s *Server) handleStartFRPWithRegistrationPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	code, ok1 := pkg.Args["code"].(string)
 	if !ok1 {
@@ -356,6 +442,8 @@ func (s *Server) handleStartFRPWithRegistrationPackage(client *ClientConnection,
 	}
 }
 
+// 处理启动FRP监听（无需注册）包。
+// 参数：client - 客户端连接，pkg - 启动包。
 func (s *Server) handleStartFRPWithoutRegistrationPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	localAddr, ok1 := pkg.Args["local_addr"].(string)
 	remoteAddr, ok2 := pkg.Args["remote_addr"].(string)
@@ -378,6 +466,8 @@ func (s *Server) handleStartFRPWithoutRegistrationPackage(client *ClientConnecti
 	}
 }
 
+// 处理通过本地地址启动FRP监听包。
+// 参数：client - 客户端连接，pkg - 启动包。
 func (s *Server) handleStartFRPWithLocalAddressPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	localAddr, ok1 := pkg.Args["local_addr"].(string)
 	if !ok1 {
@@ -392,6 +482,8 @@ func (s *Server) handleStartFRPWithLocalAddressPackage(client *ClientConnection,
 	}
 }
 
+// 处理注册并运行Nginx FRP包。
+// 参数：client - 客户端连接，pkg - 注册包。
 func (s *Server) handleRegisterNginxFRPAndRunPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	var extraArgs map[string]string
 	extraRaw, ok := pkg.Args["extra_args"].(string)
@@ -419,6 +511,8 @@ func (s *Server) handleRegisterNginxFRPAndRunPackage(client *ClientConnection, p
 	}
 }
 
+// 处理移除Nginx FRP包。
+// 参数：client - 客户端连接，pkg - 注销包。
 func (s *Server) handleUnregisterNginxFRPPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	var extraArgs map[string]string
 	extraRaw, ok := pkg.Args["extra_args"].(string)
@@ -446,6 +540,8 @@ func (s *Server) handleUnregisterNginxFRPPackage(client *ClientConnection, pkg a
 	}
 }
 
+// 处理向远程节点传输文件包。
+// 参数：client - 客户端连接，pkg - 传输包。
 func (s *Server) handleTransferFileToRemotePackage(client *ClientConnection, pkg api.MajulaPackage) {
 	localPath, ok1 := pkg.Args["local_path"].(string)
 	remoteNode, ok2 := pkg.Args["remote_node"].(string)
@@ -461,6 +557,8 @@ func (s *Server) handleTransferFileToRemotePackage(client *ClientConnection, pkg
 	}
 }
 
+// 处理从远程节点下载文件包。
+// 参数：client - 客户端连接，pkg - 下载包。
 func (s *Server) handleDownloadFileFromRemotePackage(client *ClientConnection, pkg api.MajulaPackage) {
 	localPath, ok1 := pkg.Args["local_path"].(string)
 	remoteNode, ok2 := pkg.Args["remote_node"].(string)
@@ -475,6 +573,8 @@ func (s *Server) handleDownloadFileFromRemotePackage(client *ClientConnection, p
 	}
 }
 
+// 统一处理所有客户端发来的包。
+// 参数：client - 客户端连接，pkg - 任意包。
 func (s *Server) handlePackage(client *ClientConnection, pkg api.MajulaPackage) {
 	switch pkg.Method {
 	case "REGISTER_CLIENT":
@@ -503,6 +603,9 @@ func (s *Server) handlePackage(client *ClientConnection, pkg api.MajulaPackage) 
 
 	case "RPC":
 		go s.handleRPCCallPackage(client, pkg)
+
+	case "RETURN_RESULT":
+		go s.handleReturnResultPackage(client, pkg)
 
 	case "REGISTER_FRP":
 		go s.handleFRPRegisterPackage(client, pkg)
@@ -536,6 +639,9 @@ func (s *Server) handlePackage(client *ClientConnection, pkg api.MajulaPackage) 
 	}
 }
 
+// 向指定客户端发送消息。
+// 参数：clientID - 客户端ID，pkg - 消息包。
+// 返回：错误信息（如有）。
 func (s *Server) SendToClient(clientID string, pkg api.MajulaPackage) error {
 	s.Lock.RLock()
 	defer s.Lock.RUnlock()
@@ -553,6 +659,8 @@ func (s *Server) SendToClient(clientID string, pkg api.MajulaPackage) error {
 	}
 }
 
+// 注销指定客户端的所有RPC服务。
+// 参数：clientID - 客户端ID。
 func (s *Server) UnregisterClientRpcServices(clientID string) {
 	s.Node.RpcFuncsMutex.Lock()
 	defer s.Node.RpcFuncsMutex.Unlock()
@@ -568,6 +676,7 @@ func (s *Server) UnregisterClientRpcServices(clientID string) {
 	}
 }
 
+// 优雅关闭Server，断开所有客户端。
 func (s *Server) Shutdown() {
 	s.Lock.Lock()
 	defer s.Lock.Unlock()
@@ -580,6 +689,8 @@ func (s *Server) Shutdown() {
 	s.Clients = make(map[string]*ClientConnection)
 }
 
+// 处理HTTP请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleHTTP(c *gin.Context) {
 	target, _ := parseGinParameters(c)
 	clientID := target
@@ -644,6 +755,8 @@ func (s *Server) handleHTTP(c *gin.Context) {
 	}
 }
 
+// 注册支持GET和POST的路由。
+// 参数：rg - 路由组，path - 路径，handler - 处理函数，withTarget - 是否带目标参数。
 func registerDualMethod(rg *gin.RouterGroup, path string, handler gin.HandlerFunc, withTarget bool) {
 	rg.GET(path, handler)
 	rg.POST(path, handler)
@@ -660,11 +773,15 @@ func registerDualMethod(rg *gin.RouterGroup, path string, handler gin.HandlerFun
 	}
 }
 
+// 生成新的客户端ID。
+// 返回：客户端ID字符串。
 func (s *Server) generateClientID() string {
 	id := atomic.AddInt64(&s.ClientCounter, 1)
 	return fmt.Sprintf("client-%d", id)
 }
 
+// 处理订阅请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleSubscribe(c *gin.Context) {
 	target, params := parseGinParameters(c)
 	clientID := target
@@ -751,6 +868,8 @@ func (s *Server) handleSubscribe(c *gin.Context) {
 	}
 }
 
+// 处理发布请求。
+// 参数：c - Gin上下文。
 func (s *Server) handlePublish(c *gin.Context) {
 	target, params := parseGinParameters(c)
 	clientID := target
@@ -797,6 +916,8 @@ func (s *Server) handlePublish(c *gin.Context) {
 	})
 }
 
+// 处理RPC请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleRpc(c *gin.Context) {
 	clientID, params := parseGinParameters(c)
 
@@ -869,6 +990,8 @@ func (s *Server) handleRpc(c *gin.Context) {
 	<-ctx.Done()
 }
 
+// 处理发送请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleSend(c *gin.Context) {
 	clientID, params := parseGinParameters(c)
 
@@ -935,6 +1058,8 @@ func (s *Server) handleSend(c *gin.Context) {
 	})
 }
 
+// 处理列出RPC服务请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleListRpc(c *gin.Context) {
 	clientID, params := parseGinParameters(c)
 
@@ -1001,6 +1126,8 @@ func (s *Server) handleListRpc(c *gin.Context) {
 	})
 }
 
+// Gin中间件，处理跨域请求。
+// 返回：gin.HandlerFunc。
 func Cors() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method
@@ -1024,6 +1151,9 @@ func Cors() gin.HandlerFunc {
 	}
 }
 
+// 解析Gin参数。
+// 参数：c - Gin上下文。
+// 返回：目标字符串和参数map。
 func parseGinParameters(c *gin.Context) (string, map[string]interface{}) {
 	target := c.Param("target")
 	if target != "" && target[0] == '/' {
@@ -1048,6 +1178,8 @@ func parseGinParameters(c *gin.Context) (string, map[string]interface{}) {
 	return target, params
 }
 
+// 处理FRP相关HTTP请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleFrp(c *gin.Context) {
 	target, params := parseGinParameters(c)
 	_ = target
@@ -1080,6 +1212,8 @@ func (s *Server) handleFrp(c *gin.Context) {
 	})
 }
 
+// 处理文件上传请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleFileUpload(c *gin.Context) {
 	_, params := parseGinParameters(c)
 
@@ -1107,6 +1241,8 @@ func (s *Server) handleFileUpload(c *gin.Context) {
 	})
 }
 
+// 处理文件下载请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleFileDownload(c *gin.Context) {
 	_, params := parseGinParameters(c)
 

@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// FRPConfig FRPConfig结构体，保存FRP端口转发的配置信息。
 type FRPConfig struct {
 	Code       string
 	LocalAddr  string
@@ -17,6 +18,7 @@ type FRPConfig struct {
 	RemoteAddr string
 }
 
+// StubManager StubManager结构体，管理所有StreamStub和FRP配置。
 type StubManager struct {
 	Node        *Node
 	MyNodeId    string
@@ -28,6 +30,9 @@ type StubManager struct {
 	FrpConfigMutex sync.RWMutex
 }
 
+// RegisterFRP 注册一个FRP配置。
+// 参数：config - FRPConfig配置。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RegisterFRP(config *FRPConfig) error {
 	sm.FrpConfigMutex.Lock()
 	defer sm.FrpConfigMutex.Unlock()
@@ -40,6 +45,9 @@ func (sm *StubManager) RegisterFRP(config *FRPConfig) error {
 	return nil
 }
 
+// RegisterFRPWithCode 通过详细参数注册FRP配置。
+// 参数：code/localAddr/remoteNode/remoteAddr - 配置信息。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RegisterFRPWithCode(code, localAddr, remoteNode, remoteAddr string) error {
 	if code == "" || localAddr == "" || remoteNode == "" || remoteAddr == "" {
 		return fmt.Errorf("all fields must be non-empty")
@@ -53,6 +61,9 @@ func (sm *StubManager) RegisterFRPWithCode(code, localAddr, remoteNode, remoteAd
 	return sm.RegisterFRP(config)
 }
 
+// RegisterFRPSimplified 通过简化参数注册FRP配置。
+// 参数：code/remoteNode/targetAddr/isServer - 配置信息。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RegisterFRPSimplified(code string, remoteNode string, targetAddr string, isServer bool) error {
 	if code == "" || remoteNode == "" || targetAddr == "" {
 		return fmt.Errorf("code, remoteNode, and targetAddr must be non-empty")
@@ -72,11 +83,17 @@ func (sm *StubManager) RegisterFRPSimplified(code string, remoteNode string, tar
 	return sm.RegisterFRP(config)
 }
 
+// WrapFRPAddr 根据本地地址生成FRP code。
+// 参数：localAddr - 本地地址。
+// 返回：生成的code字符串。
 func WrapFRPAddr(localAddr string) string {
 	code := "_http_frp_" + localAddr
 	return code
 }
 
+// RegisterFRPWithoutCode 注册无code的FRP配置，自动生成code。
+// 参数：localAddr/remoteNode/remoteAddr - 配置信息。
+// 返回：生成的code和错误信息。
 func (sm *StubManager) RegisterFRPWithoutCode(localAddr, remoteNode, remoteAddr string) (string, error) {
 	if localAddr == "" || remoteNode == "" || remoteAddr == "" {
 		return "", fmt.Errorf("localAddr, remoteNode, and remoteAddr must be non-empty")
@@ -101,6 +118,9 @@ func (sm *StubManager) RegisterFRPWithoutCode(localAddr, remoteNode, remoteAddr 
 	return code, nil
 }
 
+// NewStubManager 创建一个新的StubManager实例。
+// 参数：node - 所属节点，myNodeId - 节点ID。
+// 返回：*StubManager 新建的管理器。
 func NewStubManager(node *Node, myNodeId string) *StubManager {
 	return &StubManager{
 		Node:     node,
@@ -109,10 +129,13 @@ func NewStubManager(node *Node, myNodeId string) *StubManager {
 	}
 }
 
+// InitStubManager Node初始化StubManager。
 func (this *Node) InitStubManager() {
 	this.StubManager = NewStubManager(this, this.ID)
 }
 
+// CloseStub 关闭指定ID的Stub。
+// 参数：stubId - Stub的ID。
 func (sm *StubManager) CloseStub(stubId string) {
 	sm.StubMutex.Lock()
 	defer sm.StubMutex.Unlock()
@@ -122,6 +145,8 @@ func (sm *StubManager) CloseStub(stubId string) {
 	}
 }
 
+// CloseStubByAddr 通过地址关闭Stub。
+// 参数：addr - 地址。
 func (sm *StubManager) CloseStubByAddr(addr string) {
 	sm.StubMutex.Lock()
 	defer sm.StubMutex.Unlock()
@@ -131,6 +156,7 @@ func (sm *StubManager) CloseStubByAddr(addr string) {
 	}
 }
 
+// CloseAllStubs 关闭所有Stub。
 func (sm *StubManager) CloseAllStubs() {
 	sm.StubMutex.Lock()
 	defer sm.StubMutex.Unlock()
@@ -140,6 +166,9 @@ func (sm *StubManager) CloseAllStubs() {
 	}
 }
 
+// GetStubById 根据ID获取Stub。
+// 参数：stubId - Stub的ID。
+// 返回：*StreamStub和是否存在。
 func (sm *StubManager) GetStubById(stubId string) (*StreamStub, bool) {
 	sm.StubMutex.Lock()
 	defer sm.StubMutex.Unlock()
@@ -147,6 +176,7 @@ func (sm *StubManager) GetStubById(stubId string) (*StreamStub, bool) {
 	return stub, exists
 }
 
+// DeleteAllStubs 删除所有Stub。
 func (sm *StubManager) DeleteAllStubs() {
 	sm.StubMutex.Lock()
 	defer sm.StubMutex.Unlock()
@@ -156,6 +186,8 @@ func (sm *StubManager) DeleteAllStubs() {
 	}
 }
 
+// DeleteStubById 删除指定ID的Stub。
+// 参数：stubId - Stub的ID。
 func (sm *StubManager) DeleteStubById(stubId string) {
 	sm.StubMutex.Lock()
 	defer sm.StubMutex.Unlock()
@@ -164,6 +196,9 @@ func (sm *StubManager) DeleteStubById(stubId string) {
 	}
 }
 
+// RunFRPWithStub 通过Stub和FRP配置运行FRP连接。
+// 参数：code - FRP code。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RunFRPWithStub(code string) error {
 	sm.FrpConfigMutex.RLock()
 	config, ok := sm.FrpConfigs[code]
@@ -223,6 +258,7 @@ func (sm *StubManager) RunFRPWithStub(code string) error {
 	return nil
 }
 
+// RegisterFRPRPCHandler 注册FRP相关的RPC处理器。
 func (node *Node) RegisterFRPRPCHandler() {
 	node.registerRpcService("_frp_connect", "init", RPC_FuncInfo{}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
 		code, ok := params["code"].(string)
@@ -294,6 +330,9 @@ func (node *Node) RegisterFRPRPCHandler() {
 
 }
 
+// RunRegisteredFRP 运行已注册的FRP配置，建立FRP连接。
+// 参数：code - FRP code。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RunRegisteredFRP(code string) error {
 	sm.FrpConfigMutex.RLock()
 	config, ok := sm.FrpConfigs[code]
@@ -351,6 +390,9 @@ func (sm *StubManager) RunRegisteredFRP(code string) error {
 	return nil
 }
 
+// RunFRPWithExistingConn 使用已存在的连接运行FRP。
+// 参数：code - FRP code，stubId - stub标识，conn - 已有连接。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RunFRPWithExistingConn(code, stubId string, conn net.Conn) error {
 	sm.FrpConfigMutex.RLock()
 	config, ok := sm.FrpConfigs[code]
@@ -394,27 +436,40 @@ func (sm *StubManager) RunFRPWithExistingConn(code, stubId string, conn net.Conn
 	return nil
 }
 
+// fileConnAdapter结构体，适配os.File为net.Conn。
 type fileConnAdapter struct {
 	*os.File
 }
 
-func (f *fileConnAdapter) SetReadDeadline(t time.Time) error  { return nil }
-func (f *fileConnAdapter) SetWriteDeadline(t time.Time) error { return nil }
-func (f *fileConnAdapter) SetDeadline(t time.Time) error      { return nil }
+// SetReadDeadline 设置读取超时时间（无实际操作）。
+func (f *fileConnAdapter) SetReadDeadline(t time.Time) error { return nil }
 
+// SetWriteDeadline 设置写入超时时间（无实际操作）。
+func (f *fileConnAdapter) SetWriteDeadline(t time.Time) error { return nil }
+
+// SetDeadline 设置超时时间（无实际操作）。
+func (f *fileConnAdapter) SetDeadline(t time.Time) error { return nil }
+
+// LocalAddr 获取本地地址（伪造）。
 func (f *fileConnAdapter) LocalAddr() net.Addr {
 	return dummyAddr("file-local")
 }
 
+// RemoteAddr 获取远程地址（伪造）。
 func (f *fileConnAdapter) RemoteAddr() net.Addr {
 	return dummyAddr("file-remote")
 }
 
+// dummyAddr类型，实现net.Addr接口。
 type dummyAddr string
 
+// Network 获取网络类型。
 func (d dummyAddr) Network() string { return "file" }
-func (d dummyAddr) String() string  { return string(d) }
 
+// 获取地址字符串。
+func (d dummyAddr) String() string { return string(d) }
+
+// RegisteredTransferFileToRemote 注册文件传输相关的RPC。
 func (sm *StubManager) RegisteredTransferFileToRemote(code, localFilePath, remoteFilePath string) error {
 	file, err := os.Open(localFilePath)
 	if err != nil {
@@ -460,6 +515,7 @@ func (sm *StubManager) RegisteredTransferFileToRemote(code, localFilePath, remot
 	return nil
 }
 
+// RegisterFileTransferRPCs 注册文件传输相关的RPC处理器。
 func (node *Node) RegisterFileTransferRPCs() {
 	node.registerRpcService("_open_file", "init", RPC_FuncInfo{}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
 		code, _ := params["code"].(string)
@@ -554,6 +610,7 @@ func (node *Node) RegisterFileTransferRPCs() {
 
 }
 
+// RegisteredDownloadFileFromRemote 注册下载文件的RPC。
 func (sm *StubManager) RegisteredDownloadFileFromRemote(code, remoteFilePath, localFilePath string) error {
 	file, err := os.Create(localFilePath)
 	if err != nil {
@@ -601,6 +658,7 @@ func (sm *StubManager) RegisteredDownloadFileFromRemote(code, remoteFilePath, lo
 	return nil
 }
 
+// 处理FRP相关的消息。
 func (sm *StubManager) handleFrpMessages(msg *Message) {
 	var stubId string
 
@@ -650,6 +708,9 @@ func (sm *StubManager) handleFrpMessages(msg *Message) {
 	}
 }
 
+// RunFRPDynamicWithRegistration 动态注册并运行FRP，带注册。
+// 参数：code - FRP code。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RunFRPDynamicWithRegistration(code string) error {
 	sm.FrpConfigMutex.RLock()
 	config, ok := sm.FrpConfigs[code]
@@ -727,6 +788,9 @@ func (sm *StubManager) RunFRPDynamicWithRegistration(code string) error {
 	return nil
 }
 
+// RunFRPDynamicWithRegistrationLocalAddr 动态注册并运行FRP，使用本地地址。
+// 参数：localAddr - 本地地址。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RunFRPDynamicWithRegistrationLocalAddr(localAddr string) error {
 	code := WrapFRPAddr(localAddr)
 	sm.FrpConfigMutex.RLock()
@@ -804,6 +868,9 @@ func (sm *StubManager) RunFRPDynamicWithRegistrationLocalAddr(localAddr string) 
 	return nil
 }
 
+// RunFRPDynamicWithoutRegistration 动态运行FRP，无需注册。
+// 参数：localAddr/remoteNode/remoteAddr - 配置信息。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RunFRPDynamicWithoutRegistration(localAddr, remoteNode, remoteAddr string) error {
 	ln, err := net.Listen("tcp", localAddr)
 	if err != nil {
@@ -872,6 +939,9 @@ func (sm *StubManager) RunFRPDynamicWithoutRegistration(localAddr, remoteNode, r
 	return nil
 }
 
+// TransferFileToRemoteWithoutRegistration 无需注册直接向远程节点传输文件。
+// 参数：remoteNode/localFilePath/remoteFilePath - 配置信息。
+// 返回：错误信息（如有）。
 func (sm *StubManager) TransferFileToRemoteWithoutRegistration(remoteNode, localFilePath, remoteFilePath string) error {
 	file, err := os.Open(localFilePath)
 	if err != nil {
@@ -911,6 +981,9 @@ func (sm *StubManager) TransferFileToRemoteWithoutRegistration(remoteNode, local
 	return nil
 }
 
+// DownloadFileFromRemoteWithoutRegistration 无需注册直接从远程节点下载文件。
+// 参数：remoteNode/remoteFilePath/localFilePath - 配置信息。
+// 返回：错误信息（如有）。
 func (sm *StubManager) DownloadFileFromRemoteWithoutRegistration(remoteNode, remoteFilePath, localFilePath string) error {
 	file, err := os.Create(localFilePath)
 	if err != nil {
@@ -950,6 +1023,9 @@ func (sm *StubManager) DownloadFileFromRemoteWithoutRegistration(remoteNode, rem
 	return nil
 }
 
+// RegisterFRPAndRun 注册并运行FRP。
+// 参数：remoteNode - 远程节点，localAddr/remoteAddr - 地址信息。
+// 返回：错误信息（如有）。
 func (sm *StubManager) RegisterFRPAndRun(remoteNode string, localAddr, remoteAddr string) error {
 	if remoteNode == "" || localAddr == "" || remoteAddr == "" {
 		return fmt.Errorf("remoteNode, localAddr, and remoteAddr must be non-empty")

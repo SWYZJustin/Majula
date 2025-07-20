@@ -4,7 +4,6 @@ import "time"
 
 // ===================== 可通过配置文件修改的参数 =====================
 var (
-	// 这些参数建议暴露给用户配置
 	CostCheckTimePeriod          = 1 * time.Second
 	BuildUpTimePeriod            = 500 * time.Millisecond
 	HeartBeatTimePeriod          = 1000 * time.Millisecond

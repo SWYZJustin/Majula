@@ -11,11 +11,14 @@ import (
 	"time"
 )
 
+// DebugPrint StreamStub的调试打印函数。
+// 参数：name - 调用者名称，message - 要输出的信息。
 func (s *StreamStub) DebugPrint(name string, message string) {
 	return
 	fmt.Printf("[%s: %s] %s\n", s.myId, name, message)
 }
 
+// WindowBuffer WindowBuffer结构体，滑动窗口缓冲区，用于流式数据的有序缓存和重传。
 type WindowBuffer struct {
 	mu         sync.Mutex
 	startSeq   int64
@@ -26,6 +29,9 @@ type WindowBuffer struct {
 	sendTime   []time.Time
 }
 
+// NewWindowBuffer 创建一个新的WindowBuffer实例。
+// 参数：startSeq - 起始序号，size - 窗口大小。
+// 返回：*WindowBuffer 新建的窗口缓冲区。
 func NewWindowBuffer(startSeq int64, size int) *WindowBuffer {
 	return &WindowBuffer{
 		startSeq:   startSeq,
@@ -38,6 +44,9 @@ func NewWindowBuffer(startSeq int64, size int) *WindowBuffer {
 	}
 }
 
+// Put 向窗口缓冲区中放入数据。
+// 参数：seq - 数据序号，value - 数据内容。
+// 返回：是否成功放入。
 func (wb *WindowBuffer) Put(seq int64, value []byte) bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -52,6 +61,9 @@ func (wb *WindowBuffer) Put(seq int64, value []byte) bool {
 	return true
 }
 
+// Get 从窗口缓冲区获取指定序号的数据。
+// 参数：seq - 数据序号。
+// 返回：数据内容和是否存在。
 func (wb *WindowBuffer) Get(seq int64) ([]byte, bool) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -65,6 +77,8 @@ func (wb *WindowBuffer) Get(seq int64) ([]byte, bool) {
 	return wb.data[index], true
 }
 
+// Advance 推进窗口起始序号，移除最前的数据。
+// 返回：是否成功推进。
 func (wb *WindowBuffer) Advance() bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -78,6 +92,9 @@ func (wb *WindowBuffer) Advance() bool {
 	return true
 }
 
+// BundleAdvanceUpTo 批量推进窗口到指定最大序号，移除已填充的数据。
+// 参数：maxSeq - 最大推进到的序号。
+// 返回：实际推进的数量。
 func (wb *WindowBuffer) BundleAdvanceUpTo(maxSeq int64) int {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -98,6 +115,9 @@ func (wb *WindowBuffer) BundleAdvanceUpTo(maxSeq int64) int {
 	return count
 }
 
+// IsFilled 判断指定序号的数据是否已填充。
+// 参数：seq - 数据序号。
+// 返回：是否已填充。
 func (wb *WindowBuffer) IsFilled(seq int64) bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -109,6 +129,9 @@ func (wb *WindowBuffer) IsFilled(seq int64) bool {
 	return wb.filled[index]
 }
 
+// GetWithMeta 获取指定序号的数据及其元信息。
+// 参数：seq - 数据序号。
+// 返回：数据内容、重试次数、发送时间、是否存在。
 func (wb *WindowBuffer) GetWithMeta(seq int64) ([]byte, int, time.Time, bool) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -122,6 +145,8 @@ func (wb *WindowBuffer) GetWithMeta(seq int64) ([]byte, int, time.Time, bool) {
 	return wb.data[index], wb.retryCount[index], wb.sendTime[index], true
 }
 
+// IncrementRetry 增加指定序号的数据重试次数并更新时间。
+// 参数：seq - 数据序号。
 func (wb *WindowBuffer) IncrementRetry(seq int64) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -133,6 +158,8 @@ func (wb *WindowBuffer) IncrementRetry(seq int64) {
 	wb.sendTime[index] = time.Now()
 }
 
+// RemoveUpTo 移除窗口中直到指定序号（含）之前的所有数据。
+// 参数：seq - 序号。
 func (wb *WindowBuffer) RemoveUpTo(seq int64) {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -146,12 +173,16 @@ func (wb *WindowBuffer) RemoveUpTo(seq int64) {
 	wb.startSeq = seq + 1
 }
 
+// IsFull 判断窗口是否已满。
+// 返回：是否已满。
 func (wb *WindowBuffer) IsFull() bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 	return wb.Count() >= wb.size
 }
 
+// Count 统计窗口中已填充的数据数量。
+// 返回：已填充数量。
 func (wb *WindowBuffer) Count() int {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
@@ -164,53 +195,66 @@ func (wb *WindowBuffer) Count() int {
 	return count
 }
 
+// CanPut 判断指定序号是否可以放入窗口。
+// 参数：seq - 数据序号。
+// 返回：是否可以放入。
 func (wb *WindowBuffer) CanPut(seq int64) bool {
 	wb.mu.Lock()
 	defer wb.mu.Unlock()
 	return seq >= wb.startSeq && seq < wb.startSeq+int64(wb.size)
 }
 
+// FRPDataPayload FRP数据包结构体。
 type FRPDataPayload struct {
 	TargetStubID string `json:"stub_id"`
 	Seq          int64  `json:"seq"`
 	Data         []byte `json:"data"`
 }
 
+// FRP数据包转字符串。
 func (p FRPDataPayload) String() string {
 	return fmt.Sprintf("FRPDataPayload{TargetStubID: %s, Seq: %d, Data: %q}", p.TargetStubID, p.Seq, p.Data)
 }
 
+// FRPAckPayload FRP确认包结构体。
 type FRPAckPayload struct {
 	TargetStubID string `json:"stub_id"`
 	Ack          int64  `json:"ack"`
 }
 
+// FRPResendRequestPayload FRP重传请求包结构体。
 type FRPResendRequestPayload struct {
 	TargetStubID string `json:"stub_id"`
 	Seq          int64  `json:"seq"`
 }
 
+// FRPCloseAckPayload FRP关闭确认包结构体。
 type FRPCloseAckPayload struct {
 	TargetStubID string `json:"stub_id"`
 }
 
+// FRP确认包转字符串。
 func (p FRPAckPayload) String() string {
 	return fmt.Sprintf("FRPAckPayload{TargetStubID: %s, Ack: %d}", p.TargetStubID, p.Ack)
 }
 
+// FRP重传请求包转字符串。
 func (p FRPResendRequestPayload) String() string {
 	return fmt.Sprintf("FRPResendRequestPayload{TargetStubID: %s, Seq: %d}", p.TargetStubID, p.Seq)
 }
 
+// FRP关闭确认包转字符串。
 func (p FRPCloseAckPayload) String() string {
 	return fmt.Sprintf("FRPCloseAckPayload{TargetStubID: %s}", p.TargetStubID)
 }
 
+// frpMessage结构体，表示内部消息。
 type frpMessage struct {
 	msgType MessageType
 	payload []byte
 }
 
+// StreamStub StreamStub结构体，表示一个FRP流的端点，负责数据收发、重传、窗口管理等。
 type StreamStub struct {
 	conn       net.Conn
 	node       *Node
@@ -258,6 +302,8 @@ type StreamStub struct {
 	readChan chan []byte
 }
 
+// 发送数据主循环，从readChan读取数据并发送，管理发送窗口。
+// 参数：ctx - 上下文，用于取消。
 func (stub *StreamStub) sendDataLoop(ctx context.Context) {
 	stub.DebugPrint("startSendDataLoop", stub.myId)
 	for {
@@ -288,6 +334,8 @@ func (stub *StreamStub) sendDataLoop(ctx context.Context) {
 	}
 }
 
+// 实际发送一条数据到对端。
+// 参数：seq - 序号，data - 数据内容。
 func (stub *StreamStub) sendData(seq int64, data []byte) {
 	stub.lastActivityTime.Store(time.Now())
 	payload := FRPDataPayload{
@@ -313,6 +361,8 @@ func (stub *StreamStub) sendData(seq int64, data []byte) {
 	go stub.node.sendTo(stub.peerNodeId, msg)
 }
 
+// 处理接收到的数据包，写入接收窗口并尝试顺序写出。
+// 参数：content - 数据内容。
 func (stub *StreamStub) onData(content []byte) {
 	stub.lastActivityTime.Store(time.Now())
 	var payload FRPDataPayload
@@ -370,6 +420,7 @@ func (stub *StreamStub) onData(content []byte) {
 	}
 }
 
+// 发送确认包（Ack）给对端。
 func (stub *StreamStub) sendAck() {
 	stub.lastActivityTime.Store(time.Now())
 	ackPayload := FRPAckPayload{
@@ -392,6 +443,8 @@ func (stub *StreamStub) sendAck() {
 	stub.node.sendTo(stub.peerNodeId, ackMsg)
 }
 
+// 处理收到的Ack包，推进发送窗口。
+// 参数：content - Ack包内容。
 func (stub *StreamStub) onAck(content []byte) {
 	stub.lastActivityTime.Store(time.Now())
 	var payload FRPAckPayload
@@ -410,11 +463,13 @@ func (stub *StreamStub) onAck(content []byte) {
 	stub.windowCond.Broadcast()
 }
 
+// 处理收到的关闭请求，执行关闭操作。
 func (stub *StreamStub) onClose() {
 	stub.DebugPrint("stub "+stub.myId+"close", "")
 	stub.lazyClose(common.AckTimeout)
 }
 
+// 执行流的关闭操作，释放资源。
 func (stub *StreamStub) doClose() {
 	stub.lastActivityTime.Store(time.Now())
 	msg := &Message{
@@ -431,6 +486,8 @@ func (stub *StreamStub) doClose() {
 	stub.lazyClose(common.AckTimeout)
 }
 
+// 重传检测主循环，定时检查未确认的数据并重发。
+// 参数：ctx - 上下文，用于取消。
 func (stub *StreamStub) retryLoop(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -445,10 +502,12 @@ func (stub *StreamStub) retryLoop(ctx context.Context) {
 	}
 }
 
+// 启动重传检测协程。
 func (stub *StreamStub) startRetryLoop() {
 	go stub.retryLoop(stub.cancelCtx)
 }
 
+// 重新发送所有未被确认的数据包。
 func (stub *StreamStub) resendUnackedData() {
 	stub.sendWindowLock.Lock()
 	defer stub.sendWindowLock.Unlock()
@@ -479,6 +538,9 @@ func (stub *StreamStub) resendUnackedData() {
 
 }
 
+// NewStreamStub 创建一个新的StreamStub实例。
+// 参数：node - 所属节点，conn - 连接，myId/peerNodeId/peerStubId/myNodeId - 标识信息。
+// 返回：*StreamStub 新建的流对象。
 func NewStreamStub(node *Node, conn net.Conn, myId, peerNodeId, peerStubId, myNodeId string) *StreamStub {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -519,6 +581,7 @@ func NewStreamStub(node *Node, conn net.Conn, myId, peerNodeId, peerStubId, myNo
 	return stub
 }
 
+// 启动从底层连接读取数据的协程。
 func (stub *StreamStub) startReadFromConn() {
 	go func() {
 		buf := make([]byte, 65535)
@@ -543,6 +606,7 @@ func (stub *StreamStub) startReadFromConn() {
 	}()
 }
 
+// 处理frp消息输入主循环。
 func (stub *StreamStub) frpMessageInLoop() {
 	for {
 		select {
@@ -565,6 +629,8 @@ func (stub *StreamStub) frpMessageInLoop() {
 	}
 }
 
+// 发送重传请求给对端。
+// 参数：seq - 需要重传的数据序号。
 func (stub *StreamStub) sendResendRequest(seq int64) {
 	stub.lastActivityTime.Store(time.Now())
 	stub.sendWindowLock.Lock()
@@ -598,6 +664,8 @@ func (stub *StreamStub) sendResendRequest(seq int64) {
 	stub.node.sendTo(stub.peerNodeId, msg)
 }
 
+// 处理收到的重传请求，尝试重发指定序号的数据。
+// 参数：content - 重传请求内容。
 func (stub *StreamStub) onResendRequest(content []byte) {
 	stub.lastActivityTime.Store(time.Now())
 
@@ -622,6 +690,8 @@ func (stub *StreamStub) onResendRequest(content []byte) {
 	}
 }
 
+// 将数据加入写入队列。
+// 参数：data - 要写入的数据。
 func (stub *StreamStub) enqueueWrite(data []byte) {
 	select {
 	case stub.writeChan <- data:
@@ -630,6 +700,8 @@ func (stub *StreamStub) enqueueWrite(data []byte) {
 	}
 }
 
+// 写入主循环，将数据写入底层连接。
+// 参数：ctx - 上下文，用于取消。
 func (stub *StreamStub) writeLoop(ctx context.Context) {
 	for {
 		select {
@@ -648,6 +720,8 @@ func (stub *StreamStub) writeLoop(ctx context.Context) {
 	}
 }
 
+// 空闲监控主循环，检测连接是否长时间无活动。
+// 参数：ctx - 上下文，用于取消。
 func (stub *StreamStub) idleMonitorLoop(ctx context.Context) {
 	ticker := time.NewTicker(common.AckTimeout)
 	defer ticker.Stop()
@@ -669,39 +743,52 @@ func (stub *StreamStub) idleMonitorLoop(ctx context.Context) {
 	}
 }
 
+// StartIdleMonitor 启动空闲监控。
 func (stub *StreamStub) StartIdleMonitor() {
 	go stub.idleMonitorLoop(stub.cancelCtx)
 }
 
+// StartSendStub 启动发送端Stub。
 func (stub *StreamStub) StartSendStub() {
 	go stub.sendDataLoop(stub.cancelCtx)
 }
 
+// StartRecvStub 启动接收端Stub。
 func (stub *StreamStub) StartRecvStub() {
 	go stub.writeLoop(stub.cancelCtx)
 }
 
+// SetFastConnect 设置快速连接模式。
+// 参数：status - 是否启用。
 func (stub *StreamStub) SetFastConnect(status bool) {
 	stub.fastConnect = status
 }
 
+// SetDelayedResend 设置延迟重传模式。
+// 参数：status - 是否启用。
 func (stub *StreamStub) SetDelayedResend(status bool) {
 	stub.delayedResend = status
 }
 
+// SetDelayedResendRequest 设置延迟重传请求模式。
+// 参数：status - 是否启用。
 func (stub *StreamStub) SetDelayedResendRequest(status bool) {
 	stub.delayedResendRequest = status
 }
 
+// StartSendLoop 启动发送主循环。
 func (stub *StreamStub) StartSendLoop() {
 	stub.startReadFromConn()
 	go stub.sendDataLoop(stub.cancelCtx)
 }
 
+// StartRecvLoop 启动接收主循环。
 func (stub *StreamStub) StartRecvLoop() {
 	go stub.writeLoop(stub.cancelCtx)
 }
 
+// 延迟关闭流，等待超时后关闭。
+// 参数：timeout - 延迟关闭时间。
 func (stub *StreamStub) lazyClose(timeout time.Duration) {
 	stub.lazyCloseOnce.Do(func() {
 		stub.DebugPrint("lazyClose", "Initiated")
@@ -725,10 +812,12 @@ func (stub *StreamStub) lazyClose(timeout time.Duration) {
 	})
 }
 
+// Close 关闭流，释放所有资源。
 func (stub *StreamStub) Close() {
 	stub.lazyClose(common.AckTimeout)
 }
 
+// 启动重传主循环。
 func (stub *StreamStub) startResendLoop() {
 	ticker := time.NewTicker(common.AckTimeout)
 	defer ticker.Stop()

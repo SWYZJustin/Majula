@@ -52,6 +52,7 @@ type RPC_Resp struct {
 	Error  string
 }
 
+// 广播本地注册的RPC服务信息到全网。
 func (node *Node) floodRpcServices() {
 	node.RpcFuncsMutex.RLock()
 	functions := make(map[string]string)
@@ -85,6 +86,9 @@ func (node *Node) floodRpcServices() {
 	}
 }
 
+// 判断RPC请求是否重复。
+// 参数：from - 来源节点，invokeId - 调用ID。
+// 返回：是否重复。
 func (node *Node) isDuplicateRpc(from string, invokeId int64) bool {
 	key := fmt.Sprintf("%s:%d", from, invokeId)
 
@@ -98,6 +102,7 @@ func (node *Node) isDuplicateRpc(from string, invokeId int64) bool {
 	return false
 }
 
+// 启动定时清理RPC缓存的协程。
 func (node *Node) startCleanRpcCacheLoop() {
 	ticker := time.NewTicker(common.RpcCacheCleanTicket)
 	defer ticker.Stop()
@@ -118,6 +123,8 @@ func (node *Node) startCleanRpcCacheLoop() {
 	}
 }
 
+// 注册本地RPC服务。
+// 参数：funcName - 方法名，provider - 提供者，info - 方法信息，callback - 回调。
 func (this *Node) registerRpcService(funcName string, provider string, info RPC_FuncInfo, callback RPC_REQ_CALLBACK) {
 	this.RpcFuncsMutex.Lock()
 	defer this.RpcFuncsMutex.Unlock()
@@ -129,6 +136,8 @@ func (this *Node) registerRpcService(funcName string, provider string, info RPC_
 	go this.floodRpcServices()
 }
 
+// 注销本地RPC服务。
+// 参数：funcName - 方法名，provider - 提供者。
 func (this *Node) unregisterRpcService(funcName string, provider string) {
 	this.RpcFuncsMutex.Lock()
 	defer this.RpcFuncsMutex.Unlock()
@@ -142,6 +151,9 @@ func (this *Node) unregisterRpcService(funcName string, provider string) {
 	go this.floodRpcServices()
 }
 
+// 查找本地RPC服务。
+// 参数：funcName - 方法名，provider - 提供者。
+// 返回：*RPC_Func。
 func (this *Node) findTargetLocalRpcService(funcName string, provider string) *RPC_Func {
 	this.RpcFuncsMutex.RLock()
 	defer this.RpcFuncsMutex.RUnlock()
@@ -155,6 +167,9 @@ func (this *Node) findTargetLocalRpcService(funcName string, provider string) *R
 	return &tRpc
 }
 
+// MakeRpcRequest 向远程节点发起RPC请求。
+// 参数：peer - 目标节点，targetFuncProvider - 提供者，fun - 方法名，params - 参数。
+// 返回：结果和是否成功。
 func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun string, params map[string]interface{}) (interface{}, bool) {
 	if peer == node.ID {
 		return node.invokeLocalRpc(targetFuncProvider, fun, params)
@@ -232,6 +247,9 @@ func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun str
 	}
 }
 
+// 本地直接调用RPC。
+// 参数：provider - 提供者，fun - 方法名，params - 参数。
+// 返回：结果和是否成功。
 func (node *Node) invokeLocalRpc(provider string, fun string, params map[string]interface{}) (interface{}, bool) {
 	node.DebugPrint("invokeLocalRpc", fmt.Sprintf("invoking local RPC: fun=%s, provider=%s", fun, provider))
 
@@ -262,6 +280,8 @@ func (node *Node) invokeLocalRpc(provider string, fun string, params map[string]
 	return result, true
 }
 
+// 处理收到的RPC请求消息。
+// 参数：msg - 消息。
 func (node *Node) handleRpcRequest(msg *Message) {
 	node.DebugPrint("handleRpcRequest", msg.Print())
 
@@ -323,6 +343,8 @@ func (node *Node) handleRpcRequest(msg *Message) {
 	go node.sendTo(msg.From, respMsg)
 }
 
+// 发送RPC错误响应。
+// 参数：msg - 原始消息，fun - 方法名，errMsg - 错误信息。
 func (node *Node) sendRpcErrorResponse(msg *Message, fun string, errMsg string) {
 	resp := RPC_Resp{
 		Fun:   fun,
@@ -348,6 +370,8 @@ func (node *Node) sendRpcErrorResponse(msg *Message, fun string, errMsg string) 
 	go node.sendTo(msg.From, respMsg)
 }
 
+// 处理收到的RPC响应消息。
+// 参数：msg - 消息。
 func (node *Node) handleRpcResponse(msg *Message) {
 	node.DebugPrint("handleRpcResponse", msg.Print())
 
@@ -383,6 +407,8 @@ func (node *Node) handleRpcResponse(msg *Message) {
 	}()
 }
 
+// 处理RPC服务信息Flood消息。
+// 参数：msg - 消息。
 func (node *Node) handleRpcServiceFlood(msg *Message) {
 	var info RpcServiceInfo
 	err := json.Unmarshal([]byte(msg.MessageData.Data), &info)
@@ -419,6 +445,7 @@ func (node *Node) handleRpcServiceFlood(msg *Message) {
 	}
 }
 
+// PrintTotalRpcs 打印全网RPC服务信息。
 func (node *Node) PrintTotalRpcs() {
 	node.TotalRpcsMutex.RLock()
 	defer node.TotalRpcsMutex.RUnlock()
@@ -437,6 +464,7 @@ func (node *Node) PrintTotalRpcs() {
 	}
 }
 
+// 启动周期性RPC服务Flood广播。
 func (node *Node) startPeriodicRpcFlood() {
 	go func() {
 		ticker := time.NewTicker(common.RpcFloodTicket)
@@ -455,6 +483,7 @@ func (node *Node) startPeriodicRpcFlood() {
 	}()
 }
 
+// RegisterDefaultRPCs 注册默认RPC服务。
 func (node *Node) RegisterDefaultRPCs() {
 	// 加法
 	node.registerRpcService("add", "init", RPC_FuncInfo{Note: "Adds two numbers"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {

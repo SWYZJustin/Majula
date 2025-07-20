@@ -841,3 +841,122 @@ func TestFrpDynamicFileTransfer(t *testing.T) {
 		t.Fatalf("File content mismatch. Got: %s, Expected: %s", string(data), content)
 	}
 }
+
+func TestFrpDynamicTunnelWithClient(t *testing.T) {
+	netConnectionAddr := "127.0.0.1:3002"
+	dynClientAddr := "127.0.0.1:24444"
+	dynServerAddr := "127.0.0.1:24445"
+
+	serverNode := NewNode("server")
+	clientA := NewNode("clientA")
+	clientB := NewNode("clientB")
+
+	serverWorker := NewTcpConnection("server", false, netConnectionAddr, "", nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
+	serverWorker.User = serverChannel
+	serverNode.AddChannel(serverChannel)
+	serverNode.Register()
+
+	clientAWorker := NewTcpConnection("clientA", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
+	clientAWorker.User = clientAChannel
+	//clientAChannel.addChannelPeer("server")
+	clientA.AddChannel(clientAChannel)
+	clientA.Register()
+	s := NewServer(clientA, "23333")
+
+	// 在后台启动服务器
+	go func() {
+		t.Logf("启动MajulaServer在端口: %s", s.Port)
+		SetupRoutes(s).Run(":" + s.Port)
+	}()
+
+	// 等待服务器启动
+	time.Sleep(3 * time.Second)
+
+	clientBWorker := NewTcpConnection("clientB", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, nil, defaultToken)
+	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
+	clientBWorker.User = clientBChannel
+	//clientBChannel.addChannelPeer("server")
+	clientB.AddChannel(clientBChannel)
+	clientB.Register()
+
+	time.Sleep(2 * time.Second)
+	client1 := api.NewMajulaClient("http://127.0.0.1:23333", "client1")
+
+	// 等待WebSocket连接建立，添加详细日志
+	t.Logf("开始等待WebSocket连接建立...")
+	deadline := time.Now().Add(15 * time.Second) // 增加超时时间
+	checkCount := 0
+	for time.Now().Before(deadline) {
+		checkCount++
+		if client1.Connected {
+			t.Logf("WebSocket连接已建立: %s (检查次数: %d)", client1.Entity, checkCount)
+			break
+		}
+		if checkCount%10 == 0 { // 每1秒输出一次状态
+			t.Logf("WebSocket连接状态检查中... (检查次数: %d, Connected: %v)", checkCount, client1.Connected)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !client1.Connected {
+		t.Fatalf("WebSocket连接超时: %s (检查次数: %d)", client1.Entity, checkCount)
+	}
+
+	// 注意：mainLoop中已经自动调用了RegisterClientID，这里不需要重复调用
+	t.Logf("WebSocket连接已建立，客户端ID已自动注册")
+	go func() {
+		ln, err := net.Listen("tcp", dynServerAddr)
+		if err != nil {
+			t.Fatalf("Server listen failed: %v", err)
+		}
+		defer ln.Close()
+		conn, err := ln.Accept()
+		if err != nil {
+			t.Fatalf("Server accept failed: %v", err)
+		}
+		defer conn.Close()
+		buf := make([]byte, 65536)
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				return
+			}
+			t.Logf("Server received: %s", string(buf[:n]))
+		}
+	}()
+	time.Sleep(1 * time.Second)
+	client1.StartFRPWithoutRegistration(dynClientAddr, "clientB", dynServerAddr)
+
+	/*
+		if err := clientA.StubManager.RegisterFRPAndRun("clientB", dynClientAddr, dynServerAddr); err != nil {
+			t.Fatalf("RegisterFRPAndRun failed: %v", err)
+		}
+
+	*/
+
+	time.Sleep(1 * time.Second)
+
+	go func() {
+		conn, err := net.Dial("tcp", dynClientAddr)
+		if err != nil {
+			t.Fatalf("Client dial failed: %v", err)
+		}
+		defer conn.Close()
+		time.Sleep(1 * time.Second)
+		for i := 0; i < 15000; i++ {
+			msg := fmt.Sprintf("ping-%d", i)
+			conn.Write([]byte(msg))
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	time.Sleep(5 * time.Second)
+	clientA.StubManager.CloseAllStubs()
+}

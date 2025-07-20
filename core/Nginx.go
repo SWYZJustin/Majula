@@ -1,9 +1,9 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -13,8 +13,11 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
+// HTTPProxyDefine HTTPProxyDefine结构体，定义HTTP代理的相关参数。
 type HTTPProxyDefine struct {
 	Schema     string            `json:"schema,omitempty"`
 	HostAddr   string            `json:"host_addr,omitempty"`
@@ -23,7 +26,8 @@ type HTTPProxyDefine struct {
 	Args       map[string]string `json:"args,omitempty"`
 }
 
-// SubKey 生成对应proxy的参数的subkey，用来更精确查找
+// SubKey 生成proxy的参数subkey，用于精确查找。
+// 返回：参数子键字符串。
 func (h *HTTPProxyDefine) SubKey() string {
 	if h.Args == nil || len(h.Args) == 0 {
 		return ""
@@ -36,7 +40,9 @@ func (h *HTTPProxyDefine) SubKey() string {
 	return strings.Join(ks, ",")
 }
 
-// AddHttpProxy 添加一个httpProxy
+// AddHttpProxy 添加一个HTTP代理配置。
+// 参数：tpd - 代理定义。
+// 返回：是否添加成功。
 func (this *Node) AddHttpProxy(tpd HTTPProxyDefine) bool {
 	this.HttpProxyStubsMutex.Lock()
 	defer this.HttpProxyStubsMutex.Unlock()
@@ -52,7 +58,9 @@ func (this *Node) AddHttpProxy(tpd HTTPProxyDefine) bool {
 	return true
 }
 
-// RemoveHttpProxy 删除一个对应的httpProxy
+// RemoveHttpProxy 删除一个HTTP代理配置。
+// 参数：tpd - 代理定义。
+// 返回：被删除的代理定义指针。
 func (this *Node) RemoveHttpProxy(tpd HTTPProxyDefine) *HTTPProxyDefine {
 	this.HttpProxyStubsMutex.Lock()
 	defer this.HttpProxyStubsMutex.Unlock()
@@ -68,7 +76,9 @@ func (this *Node) RemoveHttpProxy(tpd HTTPProxyDefine) *HTTPProxyDefine {
 	return stub
 }
 
-// FindHttpProxy 根据url查找最匹配的proxy
+// FindHttpProxy 根据url查找最匹配的HTTP代理。
+// 参数：url - 目标URL。
+// 返回：最匹配的HTTP代理定义指针。
 func (this *Node) FindHttpProxy(url *url.URL) *HTTPProxyDefine {
 	this.HttpProxyStubsMutex.Lock()
 	defer this.HttpProxyStubsMutex.Unlock()
@@ -120,6 +130,8 @@ func (this *Node) FindHttpProxy(url *url.URL) *HTTPProxyDefine {
 	return nil
 }
 
+// ListHttpProxy 列出所有HTTP代理配置。
+// 返回：HTTP代理定义切片。
 func (this *Node) ListHttpProxy() []HTTPProxyDefine {
 	this.HttpProxyStubsMutex.Lock()
 	defer this.HttpProxyStubsMutex.Unlock()
@@ -132,6 +144,9 @@ func (this *Node) ListHttpProxy() []HTTPProxyDefine {
 	return result
 }
 
+// 查找可用的本地TCP监听端口。
+// 参数：tryTimes - 尝试次数。
+// 返回：可用端口号。
 func findValidLocalTcpListenPort(tryTimes int) int {
 	minPort, maxPort := 30000, 40000
 	for i := 0; i < tryTimes; i++ {
@@ -145,6 +160,8 @@ func findValidLocalTcpListenPort(tryTimes int) int {
 	return 0
 }
 
+// 处理Nginx FRP相关的HTTP请求。
+// 参数：c - Gin上下文。
 func (s *Server) handleNginxFrp(c *gin.Context) {
 	action, args := parseGinParameters(c)
 
@@ -225,11 +242,17 @@ func (s *Server) handleNginxFrp(c *gin.Context) {
 	}
 }
 
+// WrapNginxFRPAddr 包装Nginx FRP地址。
+// 参数：localAddr - 本地地址。
+// 返回：包装后的地址字符串。
 func WrapNginxFRPAddr(localAddr string) string {
 	code := "_frp_" + localAddr
 	return code
 }
 
+// NginxFRPStarter 启动Nginx FRP服务。
+// 参数：localAddr - 本地地址，remoteNode - 远程节点，remoteAddr - 远程地址。
+// 返回：错误信息（如有）。
 func (this *Node) NginxFRPStarter(localAddr, remoteNode, remoteAddr string) error {
 
 	code := WrapNginxFRPAddr(localAddr)
@@ -252,6 +275,8 @@ func (this *Node) NginxFRPStarter(localAddr, remoteNode, remoteAddr string) erro
 	return nil
 }
 
+// ReverseProxy Gin中间件，实现反向代理。
+// 返回：gin.HandlerFunc。
 func (s *Server) ReverseProxy() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hpd := s.Node.FindHttpProxy(c.Request.URL)
@@ -265,6 +290,21 @@ func (s *Server) ReverseProxy() gin.HandlerFunc {
 				req.Host = hpd.LocalAddr
 				req.URL.Host = hpd.LocalAddr
 				req.URL.Scheme = hpd.Schema
+
+				query := req.URL.Query()
+				for k, v := range hpd.Args {
+					query.Set(k, v)
+				}
+				req.URL.RawQuery = query.Encode()
+
+				log.Printf("[ReverseProxy] Final Request: %s %s://%s%s?%s",
+					req.Method,
+					req.URL.Scheme,
+					req.URL.Host,
+					req.URL.Path,
+					req.URL.RawQuery,
+				)
+
 			},
 			ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
 				rw.WriteHeader(http.StatusBadGateway)
@@ -280,10 +320,40 @@ func (s *Server) ReverseProxy() gin.HandlerFunc {
 	}
 }
 
+/*
+func (s *Server) ReverseProxy() gin.HandlerFunc {
+	proxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
+			hpd := s.Node.FindHttpProxy(req.URL)
+			if hpd != nil {
+				req.Host = hpd.LocalAddr
+				req.URL.Host = hpd.LocalAddr
+				req.URL.Scheme = hpd.Schema
+
+				queryValues, _ := url.ParseQuery(req.URL.RawQuery)
+				req.URL.RawQuery = queryValues.Encode()
+			}
+		},
+		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
+			rw.WriteHeader(http.StatusBadGateway)
+		},
+	}
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Cache-Control", "no-store, must-revalidate")
+		c.Writer.Header().Set("Pragma", "no-cache")
+		c.Writer.Header().Set("Expires", "0")
+
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
+}
+
+*/
+
+/*
 func (s *Server) RegisterNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, extraArgs map[string]string) error {
 	form := url.Values{}
 	form.Set("action", "start")
-	form.Set("addr_", remoteNode)
+	form.Set("remote_node", remoteNode)
 	form.Set("url", remoteBaseUrl+mappedPath)
 	for k, v := range extraArgs {
 		form.Set(k, v)
@@ -305,6 +375,51 @@ func (s *Server) RegisterNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, 
 	return nil
 }
 
+*/
+
+// RegisterNginxFrp 注册Nginx FRP。
+// 参数：mappedPath - 映射路径，remoteNode - 远程节点，remoteBaseUrl - 远程基础URL，extraArgs - 额外参数。
+// 返回：错误信息（如有）。
+func (s *Server) RegisterNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, extraArgs map[string]string) error {
+	// 构造 JSON 请求体
+	payload := map[string]string{
+		"remote_node": remoteNode,
+		"url":         remoteBaseUrl + mappedPath,
+	}
+	// 合并 extraArgs
+	for k, v := range extraArgs {
+		payload[k] = v
+	}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %v", err)
+	}
+
+	endpoint := fmt.Sprintf("http://127.0.0.1:%s/majula/map/start", s.Port)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("FRP registration failed: %s", string(body))
+	}
+
+	log.Printf("FRP registered: mappedPath %s => %s", mappedPath, remoteBaseUrl)
+	return nil
+}
+
+/*
 func (s *Server) RemoveNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, extraArgs map[string]string) error {
 	form := url.Values{}
 	form.Set("action", "stop")
@@ -330,8 +445,52 @@ func (s *Server) RemoveNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, ex
 	return nil
 }
 
+*/
+
+// RemoveNginxFrp 移除Nginx FRP。
+// 参数：mappedPath - 映射路径，remoteNode - 远程节点，remoteBaseUrl - 远程基础URL，extraArgs - 额外参数。
+// 返回：错误信息（如有）。
+func (s *Server) RemoveNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, extraArgs map[string]string) error {
+	payload := map[string]string{
+		"remote_node": remoteNode,
+		"url":         remoteBaseUrl + mappedPath,
+	}
+	for k, v := range extraArgs {
+		payload[k] = v
+	}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %v", err)
+	}
+
+	endpoint := fmt.Sprintf("http://127.0.0.1:%s/majula/map/stop", s.Port)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("FRP removal failed: %s", string(body))
+	}
+
+	log.Printf("FRP removed: mappedPath %s => %s", mappedPath, remoteBaseUrl)
+	return nil
+}
+
+// ListNginxFrp 列出所有Nginx FRP配置。
+// 返回：配置列表和错误信息。
 func (s *Server) ListNginxFrp() ([]map[string]interface{}, error) {
-	endpoint := fmt.Sprintf("http://127.0.0.1:%s/majula/map?action=list", s.Port)
+	endpoint := fmt.Sprintf("http://127.0.0.1:%s/majula/map/list", s.Port)
 	resp, err := http.Get(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %v", err)

@@ -26,6 +26,8 @@ type TcpLink struct {
 	TlsServerName            map[string]interface{}
 }
 
+// Close 关闭TcpLink连接。
+// 返回：是否关闭成功。
 func (this *TcpLink) Close() bool {
 	err := this.LinkConn.Close()
 	if err != nil {
@@ -63,10 +65,15 @@ type TcpChannelWorker struct {
 	Done                   chan bool
 }
 
+// 获取TcpChannelWorker的唯一ID。
+// 返回：名称字符串。
 func (CWorker *TcpChannelWorker) getID() string {
 	return CWorker.Name
 }
 
+// NewTcpConnection 创建新的TCP通道工作者。
+// 参数详见函数定义。
+// 返回：*TcpChannelWorker。
 func NewTcpConnection(name string, isClient bool, localAddr string, remoteAddr string,
 	ipWhitelist []string, maxFrameSize int,
 	maxInactiveDlt int64, maxSendQueueSize int, maxConnectionPerSeconds int, tlsConfig *tls.Config, pToken string) *TcpChannelWorker {
@@ -147,6 +154,7 @@ func NewTcpConnection(name string, isClient bool, localAddr string, remoteAddr s
 
 }
 
+// AcceptThread 监听并接受TCP连接的主线程。
 func (this *TcpChannelWorker) AcceptThread() {
 	var acceptlimiter = rate.NewLimiter(rate.Limit(this.MaxConnectionPerSecond), this.MaxConnectionPerSecond*2) // 每秒连接控制
 
@@ -202,6 +210,9 @@ func (this *TcpChannelWorker) AcceptThread() {
 	}
 }
 
+// 将数据分片打包为数据帧。
+// 参数：data - 原始数据。
+// 返回：分帧后的字节切片。
 func (w *TcpChannelWorker) wrapToDataFrame(data []byte) []byte {
 	maxDataSize := int(w.MaxFrameSize) - 4
 	n := len(data)
@@ -236,6 +247,9 @@ func (w *TcpChannelWorker) wrapToDataFrame(data []byte) []byte {
 	return result
 }
 
+// RegisterTcpLink 注册一个TCP连接。
+// 参数：conn - 连接，accepted - 是否为被动接收。
+// 返回：*TcpLink。
 func (this *TcpChannelWorker) RegisterTcpLink(conn net.Conn, accepted bool) *TcpLink {
 	this.MutexForTcpLinks.Lock()
 	defer this.MutexForTcpLinks.Unlock()
@@ -273,6 +287,8 @@ func (this *TcpChannelWorker) RegisterTcpLink(conn net.Conn, accepted bool) *Tcp
 	return link
 }
 
+// UnregisterTcpLink 注销一个TCP连接。
+// 参数：conn - 连接。
 func (this *TcpChannelWorker) UnregisterTcpLink(conn net.Conn) {
 	this.MutexForTcpLinks.Lock()
 	defer this.MutexForTcpLinks.Unlock()
@@ -282,11 +298,16 @@ func (this *TcpChannelWorker) UnregisterTcpLink(conn net.Conn) {
 	}
 }
 
+// TouchLink 更新连接的活跃时间。
+// 参数：conn - 连接。
 func (this *TcpChannelWorker) TouchLink(conn net.Conn) {
 	this.MutexForTcpLinks.Lock()
 	defer this.MutexForTcpLinks.Unlock()
 	this.TcpLinkLastActiveTimes[conn.RemoteAddr().String()] = time.Now().Unix()
 }
+
+// ReadThread 读取TCP连接数据的主线程。
+// 参数：conn - 连接，accepted - 是否为被动接收。
 func (this *TcpChannelWorker) ReadThread(conn net.Conn, accepted bool) {
 	// 注册link
 	link := this.RegisterTcpLink(conn, accepted)
@@ -345,6 +366,8 @@ func (this *TcpChannelWorker) ReadThread(conn net.Conn, accepted bool) {
 	}
 }
 
+// 尝试发送注册消息。
+// 参数：link - TCP连接。
 func (this *TcpChannelWorker) trySendRegisterMessage(link *TcpLink) {
 	if this.User == nil || link.HasSendRegister {
 		return
@@ -371,6 +394,9 @@ func (this *TcpChannelWorker) trySendRegisterMessage(link *TcpLink) {
 	link.WriteTo(this.wrapToDataFrame(sentItem), true)
 }
 
+// WriteTo 向连接写入数据。
+// 参数：ba - 数据，important - 是否重要。
+// 返回：写入是否成功。
 func (this *TcpLink) WriteTo(ba []byte, important bool) (writeOk bool) {
 	writeOk = false
 	defer func() {
@@ -390,6 +416,7 @@ func (this *TcpLink) WriteTo(ba []byte, important bool) (writeOk bool) {
 	return writeOk
 }
 
+// WriteThread 连接写入线程。
 func (this *TcpLink) WriteThread() {
 	const importantQuota = 5
 	importantCount := 0
@@ -428,7 +455,8 @@ func (this *TcpLink) WriteThread() {
 	}
 }
 
-// 实际函数将数据流写入连接
+// 写入所有数据到连接。
+// 参数：conn - 连接，ba - 数据。
 func writeAll(conn net.Conn, ba []byte) {
 	total := 0
 	for total < len(ba) {
@@ -440,6 +468,8 @@ func writeAll(conn net.Conn, ba []byte) {
 	}
 }
 
+// DeleteInactiveLink 删除不活跃的连接。
+// 返回：被删除的连接列表。
 func (this *TcpChannelWorker) DeleteInactiveLink() []net.Conn {
 	ret := []net.Conn{}
 	now := time.Now().Unix()
@@ -472,6 +502,8 @@ func (this *TcpChannelWorker) DeleteInactiveLink() []net.Conn {
 	return ret
 }
 
+// ConnectThread 客户端连接线程，主动连接远端。
+// 参数：laddr - 本地地址，raddr - 远端地址。
 func (this *TcpChannelWorker) ConnectThread(laddr net.Addr, raddr net.Addr) {
 	connectFailureCount := 0
 	for !this.IsClosed {
@@ -561,6 +593,7 @@ func (this *TcpChannelWorker) ConnectThread(laddr net.Addr, raddr net.Addr) {
 	}
 }
 
+// StartCleanupThread 启动定时清理线程。
 func (this *TcpChannelWorker) StartCleanupThread() {
 	for {
 		select {
@@ -574,6 +607,7 @@ func (this *TcpChannelWorker) StartCleanupThread() {
 	}
 }
 
+// StartMessageProcessor 启动消息处理线程。
 func (this *TcpChannelWorker) StartMessageProcessor() {
 	for {
 		select {
@@ -585,6 +619,8 @@ func (this *TcpChannelWorker) StartMessageProcessor() {
 	}
 }
 
+// 处理收到的数据包。
+// 参数：pkg - IP包。
 func (this *TcpChannelWorker) processPackage(pkg IpPackage) {
 	pra := pkg.RemoteAddr
 
@@ -611,6 +647,9 @@ func (this *TcpChannelWorker) processPackage(pkg IpPackage) {
 	}
 }
 
+// 校验消息哈希。
+// 参数：msg - 消息。
+// 返回：校验结果。
 func (this *TcpChannelWorker) checkHash(msg *Message) bool {
 	HashValue := msg.Data
 	selfCalculatedHash := HashIDWithToken(msg.From, this.Token)
@@ -632,6 +671,9 @@ func (this *TcpChannelWorker) checkHash(msg *Message) bool {
 
 	return result
 }
+
+// 处理注册消息。
+// 参数：pra - 地址，msg - 消息。
 func (this *TcpChannelWorker) handleRegisterMessage(pra string, msg *Message) {
 	this.MutexForTcpLinks.Lock()
 	defer this.MutexForTcpLinks.Unlock()
@@ -658,6 +700,8 @@ func (this *TcpChannelWorker) handleRegisterMessage(pra string, msg *Message) {
 	}
 }
 
+// 处理普通消息。
+// 参数：pra - 地址，msg - 消息。
 func (this *TcpChannelWorker) handleNormalMessage(pra string, msg *Message) {
 	peerId := msg.LastSender
 
@@ -692,6 +736,8 @@ func (this *TcpChannelWorker) handleNormalMessage(pra string, msg *Message) {
 	}
 }
 
+// Close 关闭通道工作者，断开所有连接。
+// 返回：错误信息（如有）。
 func (this *TcpChannelWorker) Close() error {
 	this.IsClosed = true
 	close(this.Done)
@@ -708,6 +754,8 @@ func (this *TcpChannelWorker) Close() error {
 	return nil
 }
 
+// DeleteInactiveLinkForce 强制删除所有不活跃连接。
+// 返回：被删除的连接列表。
 func (this *TcpChannelWorker) DeleteInactiveLinkForce() []net.Conn {
 	this.MutexForTcpLinks.Lock()
 	defer this.MutexForTcpLinks.Unlock()
@@ -721,6 +769,8 @@ func (this *TcpChannelWorker) DeleteInactiveLinkForce() []net.Conn {
 	return ret
 }
 
+// 发送消息到指定节点。
+// 参数：nextHopNodeId - 目标节点ID，msg - 消息。
 func (this *TcpChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
 	if msg == nil {
 		return
@@ -748,6 +798,8 @@ func (this *TcpChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
 	this.MutexForTcpLinks.RUnlock()
 }
 
+// 广播消息到所有连接。
+// 参数：msg - 消息。
 func (this *TcpChannelWorker) broadCast(msg *Message) {
 	if msg == nil {
 		return
@@ -770,6 +822,8 @@ func (this *TcpChannelWorker) broadCast(msg *Message) {
 	}(this.wrapToDataFrame(sentItem), msg.isImportant())
 }
 
+// GetAllConns 获取所有TCP连接。
+// 返回：TcpLink切片。
 func (this *TcpChannelWorker) GetAllConns() []*TcpLink {
 	ret := []*TcpLink{}
 	this.MutexForTcpLinks.RLock()

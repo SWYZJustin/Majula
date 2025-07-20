@@ -6,9 +6,19 @@
   <component name="ChangeListManager">
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/MajulaNodeFromYaml.go" beforeDir="false" afterPath="$PROJECT_DIR$/MajulaNodeFromYaml.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/MajulaIntegrationTest.go" beforeDir="false" afterPath="$PROJECT_DIR$/MajulaIntegrationTest.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/MajulaClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/MajulaClient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/apis.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/apis.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/common/Constants.go" beforeDir="false" afterPath="$PROJECT_DIR$/common/Constants.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Channel.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Channel.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/FRPStreamStub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStreamStub.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/FRPStubManager.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStubManager.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/MajulaServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/MajulaServer.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Nginx.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Nginx.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node_test.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RPC.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/TCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TCPChannelWorker.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -51,6 +61,7 @@
     "Go Test.TestFrpDynamicTunnel in Majula/core (2).executor": "Run",
     "Go Test.TestFrpDynamicTunnel in Majula/core (3).executor": "Run",
     "Go Test.TestFrpDynamicTunnel in Majula/core.executor": "Run",
+    "Go Test.TestFrpDynamicTunnelWithClient in Majula/core.executor": "Run",
     "Go Test.TestFrpFileTransfer in Majula.executor": "Run",
     "Go Test.TestRpcCommunication in Majula.executor": "Run",
     "Go Test.TestWebSocketRpc in Majula.executor": "Run",
@@ -85,7 +96,7 @@
       <recent name="E:\GolangProjects\Majula\common" />
     </key>
   </component>
-  <component name="RunManager" selected="Go Test.TestFrpDynamicTunnel in Majula/core (3)">
+  <component name="RunManager" selected="Go Test.TestFrpDynamicTunnelWithClient in Majula/core">
     <configuration name="TestFrpDynamicFileTransfer in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="Majula" />
       <working_directory value="$PROJECT_DIR$/core" />
@@ -134,7 +145,7 @@
       <pattern value="^\QTestFrpDynamicTunnel\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="TestFrpDynamicTunnel in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="TestFrpDynamicTunnelWithClient in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="Majula" />
       <working_directory value="$PROJECT_DIR$/core" />
       <root_directory value="$PROJECT_DIR$" />
@@ -143,16 +154,16 @@
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$" />
       <framework value="gotest" />
-      <pattern value="^\QTestFrpDynamicTunnel\E$" />
+      <pattern value="^\QTestFrpDynamicTunnelWithClient\E$" />
       <method v="2" />
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Go Test.TestFrpDynamicTunnelWithClient in Majula/core" />
         <item itemvalue="Go Test.TestFrpDynamicTunnel in Majula/core (3)" />
         <item itemvalue="Go Test.TestFrpDynamicTunnel in Majula/core (2)" />
         <item itemvalue="Go Test.TestFrpDynamicTunnel in Majula/core (1)" />
         <item itemvalue="Go Test.TestFrpDynamicFileTransfer in Majula/core" />
-        <item itemvalue="Go Test.TestFrpDynamicTunnel in Majula/core" />
       </list>
     </recent_temporary>
   </component>

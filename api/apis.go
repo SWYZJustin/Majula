@@ -40,6 +40,21 @@ func (c *Client) RegisterRpc(fun string, handler RpcCallback, meta *RpcMeta) {
 	c.inner.RegisterRpc(fun, handler, meta)
 }
 
+// CallRpcAsync 异步执行一次远程 RPC 请求（非阻塞）。
+//
+// fun:        要调用的函数名（例如 "getUserInfo"）
+// args:       函数参数（key-value 形式）
+// targetNode: 目标节点 ID（函数在哪个节点提供）
+// provider:   提供该函数的服务名
+// timeout:    超时时间
+// callback:   调用完成后的回调函数（第一个参数为结果，第二个为是否成功）
+//
+// 注意：调用结果不会立即返回，而是异步通过回调函数通知调用方。
+// 常用于不希望阻塞主流程的场景，如 UI、批处理、日志写入等。
+func (c *Client) CallRpcAsync(fun string, args map[string]interface{}, targetNode, provider string, timeout time.Duration, callback func(interface{}, bool)) {
+	c.inner.CallRpcAsync(fun, targetNode, provider, args, timeout, callback)
+}
+
 // UnregisterRpc 注销一个已注册的本地 RPC 函数。
 //
 // fun: 要注销的函数名

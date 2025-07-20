@@ -3,12 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"github.com/gorilla/websocket"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type MajulaPackage struct {
@@ -50,6 +52,9 @@ type MajulaClient struct {
 	Lock      sync.RWMutex
 }
 
+// NewMajulaClient 创建一个新的MajulaClient实例，初始化WebSocket连接和相关资源。
+// 参数：addr - 服务器地址，entity - 客户端唯一标识。
+// 返回：*MajulaClient 实例。
 func NewMajulaClient(addr, entity string) *MajulaClient {
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &MajulaClient{
@@ -65,10 +70,16 @@ func NewMajulaClient(addr, entity string) *MajulaClient {
 		},
 	}
 
-	go client.mainLoop()
+	ready := make(chan struct{})
+
+	// 实现同步注册
+	go client.mainLoop(ready)
+
+	<-ready
 	return client
 }
 
+// RegisterClientID 向服务器注册当前客户端ID，便于后续通信。
 func (c *MajulaClient) RegisterClientID() {
 	content := map[string]interface{}{
 		"client_id": c.Entity,
@@ -77,9 +88,12 @@ func (c *MajulaClient) RegisterClientID() {
 		Method: "REGISTER_CLIENT",
 		Args:   content,
 	})
+	fmt.Println("Register client!!:", c.Entity)
 }
 
-func (c *MajulaClient) mainLoop() {
+// MajulaClient的主循环，负责建立WebSocket连接、自动重连、启动读写循环。
+// 参数：ready - 用于通知外部连接已建立的通道。
+func (c *MajulaClient) mainLoop(ready chan struct{}) {
 	url := c.formatWsUrl()
 	failures := 0
 	for {
@@ -93,6 +107,7 @@ func (c *MajulaClient) mainLoop() {
 			go c.readLoop()
 			go c.sendLoop()
 			c.RestoreState()
+			close(ready)
 			<-c.Ctx.Done()
 			conn.Close()
 			return
@@ -110,6 +125,8 @@ func (c *MajulaClient) mainLoop() {
 	}
 }
 
+// 格式化WebSocket连接地址，将http/https转换为ws/wss，并拼接实体ID。
+// 返回：格式化后的WebSocket地址字符串。
 func (c *MajulaClient) formatWsUrl() string {
 	url := c.Addr
 	if strings.HasPrefix(url, "http://") {
@@ -117,9 +134,10 @@ func (c *MajulaClient) formatWsUrl() string {
 	} else if strings.HasPrefix(url, "https://") {
 		url = strings.Replace(url, "https://", "wss://", 1)
 	}
-	return url + "/ws/" + c.Entity
+	return url + "/majula/ws/" + c.Entity
 }
 
+// 持续读取服务器消息，解析后分发给对应处理函数。
 func (c *MajulaClient) readLoop() {
 	for c.Connected {
 		_, data, err := c.Conn.ReadMessage()
@@ -136,6 +154,7 @@ func (c *MajulaClient) readLoop() {
 	}
 }
 
+// 持续从发送队列取消息并通过WebSocket发送到服务器。
 func (c *MajulaClient) sendLoop() {
 	for c.Connected {
 		select {
@@ -152,6 +171,8 @@ func (c *MajulaClient) sendLoop() {
 	}
 }
 
+// 处理收到的各种类型的消息，包括RPC调用、订阅消息、私有消息等。
+// 参数：msg - 接收到的MajulaPackage消息。
 func (c *MajulaClient) handleMessage(msg MajulaPackage) {
 	switch {
 	case msg.Method == "RPC_CALL_FROM_REMOTE":
@@ -161,7 +182,11 @@ func (c *MajulaClient) handleMessage(msg MajulaPackage) {
 		if ok {
 			go func() {
 				res := handler(msg.Fun, msg.Args)
-				c.Send(MajulaPackage{Fun: msg.Fun, InvokeId: msg.InvokeId, Result: res})
+				c.Send(MajulaPackage{
+					Method:   "RETURN_RESULT",
+					Fun:      msg.Fun,
+					InvokeId: msg.InvokeId,
+					Result:   res})
 			}()
 		}
 
@@ -203,7 +228,8 @@ func (c *MajulaClient) handleMessage(msg MajulaPackage) {
 	}
 }
 
-// 注册一个rpc
+// RegisterRpc 注册一个RPC方法到本地，供远程调用，并向服务器同步注册。
+// 参数：fun - 方法名，handler - 回调函数，meta - 方法元信息。
 func (c *MajulaClient) RegisterRpc(fun string, handler RpcCallback, meta *RpcMeta) {
 	c.Wrapper.Lock.Lock()
 	c.Wrapper.RpcFuncs[fun] = handler
@@ -218,6 +244,8 @@ func (c *MajulaClient) RegisterRpc(fun string, handler RpcCallback, meta *RpcMet
 	c.Send(MajulaPackage{Method: "REGISTER_RPC", Fun: fun, Args: args})
 }
 
+// UnregisterRpc 注销本地和服务器上的RPC方法。
+// 参数：fun - 方法名。
 func (c *MajulaClient) UnregisterRpc(fun string) {
 	c.Wrapper.Lock.Lock()
 	delete(c.Wrapper.RpcFuncs, fun)
@@ -226,6 +254,9 @@ func (c *MajulaClient) UnregisterRpc(fun string) {
 	c.Send(MajulaPackage{Method: "UNREGISTER_RPC", Fun: fun})
 }
 
+// CallRpc 同步调用远程节点的RPC方法。
+// 参数：fun - 方法名，targetNode - 目标节点，provider - 服务提供者，args - 参数，timeout - 超时时间。
+// 返回：远程返回结果和是否成功。
 func (c *MajulaClient) CallRpc(fun string, targetNode string, provider string, args map[string]interface{}, timeout time.Duration) (interface{}, bool) {
 	invokeId := atomic.AddInt64(&c.InvokeId, 1)
 	ch := make(chan interface{}, 1)
@@ -254,6 +285,8 @@ func (c *MajulaClient) CallRpc(fun string, targetNode string, provider string, a
 	}
 }
 
+// Subscribe 订阅指定主题，收到消息时回调处理。
+// 参数：topic - 主题名，cb - 回调函数。
 func (c *MajulaClient) Subscribe(topic string, cb SubCallback) {
 	c.Wrapper.Lock.Lock()
 	c.Wrapper.SubFuncs[topic] = cb
@@ -261,6 +294,8 @@ func (c *MajulaClient) Subscribe(topic string, cb SubCallback) {
 	c.Send(MajulaPackage{Method: "SUBSCRIBE", Topic: topic})
 }
 
+// Unsubscribe 取消订阅指定主题。
+// 参数：topic - 主题名。
 func (c *MajulaClient) Unsubscribe(topic string) {
 	c.Wrapper.Lock.Lock()
 	delete(c.Wrapper.SubFuncs, topic)
@@ -272,11 +307,14 @@ func (c *MajulaClient) Unsubscribe(topic string) {
 	})
 }
 
+// Send 发送消息到发送队列，由sendLoop异步发送。
+// 参数：msg - 要发送的MajulaPackage消息。
 func (c *MajulaClient) Send(msg MajulaPackage) {
 	defer func() { recover() }()
 	c.SendQueue <- msg
 }
 
+// RestoreState 恢复客户端的订阅和RPC注册状态，通常用于重连后自动恢复。
 func (c *MajulaClient) RestoreState() {
 	c.Wrapper.Lock.RLock()
 	defer c.Wrapper.Lock.RUnlock()
@@ -289,6 +327,8 @@ func (c *MajulaClient) RestoreState() {
 	}
 }
 
+// Publish 向指定主题发布消息。
+// 参数：topic - 主题名，content - 消息内容。
 func (c *MajulaClient) Publish(topic string, content map[string]interface{}) {
 	c.Send(MajulaPackage{
 		Method: "PUBLISH",
@@ -297,6 +337,8 @@ func (c *MajulaClient) Publish(topic string, content map[string]interface{}) {
 	})
 }
 
+// 启动心跳机制，定时向服务器发送心跳包保持连接。
+// 参数：interval - 心跳间隔时间。
 func (c *MajulaClient) startHeartbeat(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
@@ -317,6 +359,7 @@ func (c *MajulaClient) startHeartbeat(interval time.Duration) {
 	}()
 }
 
+// Quit 主动关闭客户端连接并通知服务器。
 func (c *MajulaClient) Quit() {
 	c.Send(MajulaPackage{
 		Method: "QUIT",
@@ -327,6 +370,8 @@ func (c *MajulaClient) Quit() {
 	c.Cancel()
 }
 
+// SendPrivateMessage 发送私有消息到指定节点和客户端。
+// 参数：targetNode - 目标节点，targetClient - 目标客户端，payload - 消息内容。
 func (c *MajulaClient) SendPrivateMessage(targetNode string, targetClient string, payload map[string]interface{}) {
 	if payload == nil {
 		payload = make(map[string]interface{})
@@ -347,12 +392,16 @@ func (c *MajulaClient) SendPrivateMessage(targetNode string, targetClient string
 	})
 }
 
+// OnPrivateMessage 设置私有消息的回调处理函数。
+// 参数：cb - 回调函数。
 func (c *MajulaClient) OnPrivateMessage(cb SubCallback) {
 	c.Wrapper.Lock.Lock()
 	defer c.Wrapper.Lock.Unlock()
 	c.Wrapper.SubFuncs["__private__"] = cb
 }
 
+// RegisterFRP 注册FRP端口转发，将本地端口映射到远程节点。
+// 参数：code - 标识码，localAddr - 本地地址，remoteNode - 远程节点，remoteAddr - 远程地址。
 func (c *MajulaClient) RegisterFRP(code, localAddr, remoteNode, remoteAddr string) {
 	c.Send(MajulaPackage{
 		Method: "REGISTER_FRP",
@@ -365,6 +414,44 @@ func (c *MajulaClient) RegisterFRP(code, localAddr, remoteNode, remoteAddr strin
 	})
 }
 
+// CallRpcAsync 异步调用远程节点的RPC方法，结果通过回调返回。
+// 参数同CallRpc，callback - 结果回调函数。
+func (c *MajulaClient) CallRpcAsync(fun string, targetNode string, provider string, args map[string]interface{}, timeout time.Duration, callback func(result interface{}, ok bool)) {
+	invokeId := atomic.AddInt64(&c.InvokeId, 1)
+	ch := make(chan interface{}, 1)
+
+	c.Wrapper.Lock.Lock()
+	c.Wrapper.RpcResult[invokeId] = ch
+	c.Wrapper.Lock.Unlock()
+
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	args["_target_node"] = targetNode
+	args["_provider"] = provider
+
+	c.Send(MajulaPackage{
+		Method:   "RPC",
+		Fun:      fun,
+		Args:     args,
+		InvokeId: invokeId,
+	})
+
+	go func() {
+		select {
+		case res := <-ch:
+			callback(res, true)
+		case <-time.After(timeout):
+			callback(nil, false)
+		}
+		c.Wrapper.Lock.Lock()
+		delete(c.Wrapper.RpcResult, invokeId)
+		c.Wrapper.Lock.Unlock()
+	}()
+}
+
+// RegisterFRPWithAddr 通过本地地址注册FRP端口转发，用本地地址注册。
+// 参数：localAddr - 本地地址，remoteNode - 远程节点，remoteAddr - 远程地址。
 func (c *MajulaClient) RegisterFRPWithAddr(localAddr, remoteNode, remoteAddr string) {
 	c.Send(MajulaPackage{
 		Method: "REGISTER_FRP_WITH_ADDR",
@@ -392,6 +479,8 @@ func (c *MajulaClient) RegisterFRPTwoSide(code string, remoteNode string, target
 
 */
 
+// StartFRPWithRegistration 启动已注册的FRP监听，使用指定code。
+// 参数：code - 标识码。
 func (c *MajulaClient) StartFRPWithRegistration(code string) {
 	c.Send(MajulaPackage{
 		Method: "START_FRP_LISTENER_WITH_REGISTRATION",
@@ -401,6 +490,8 @@ func (c *MajulaClient) StartFRPWithRegistration(code string) {
 	})
 }
 
+// StartFRPWithoutRegistration 启动FRP监听（自动用地址注册），直接指定本地和远程信息。
+// 参数：localAddr - 本地地址，remoteNode - 远程节点，remoteAddr - 远程地址。
 func (c *MajulaClient) StartFRPWithoutRegistration(localAddr, remoteNode, remoteAddr string) {
 	c.Send(MajulaPackage{
 		Method: "START_FRP_LISTENER_WITHOUT_REGISTRATION",
@@ -412,6 +503,8 @@ func (c *MajulaClient) StartFRPWithoutRegistration(localAddr, remoteNode, remote
 	})
 }
 
+// StartFRPWithLocalAddr 通过本地地址启动已注册的FRP监听。
+// 参数：localAddr - 本地地址。
 func (c *MajulaClient) StartFRPWithLocalAddr(localAddr string) {
 	c.Send(MajulaPackage{
 		Method: "START_FRP_LISTENER_WITH_LOCAL_ADDR",
@@ -435,6 +528,8 @@ func (c *MajulaClient) RegisterFRPAndRun(localAddr, remoteNode, remoteAddr strin
 
 */
 
+// RegisterNginxFRPAndRun 注册并运行Nginx FRP，将本地服务映射到远程。
+// 参数：mappedAddr - 映射路径，remoteNode - 远程节点，hostAddr - 远程主机，extraArgs - 额外参数。
 func (c *MajulaClient) RegisterNginxFRPAndRun(mappedAddr, remoteNode, hostAddr string, extraArgs map[string]string) {
 	extraBytes, err := json.Marshal(extraArgs)
 	if err != nil {
@@ -453,6 +548,8 @@ func (c *MajulaClient) RegisterNginxFRPAndRun(mappedAddr, remoteNode, hostAddr s
 	})
 }
 
+// RemoveNginxFRP 移除Nginx FRP映射。
+// 参数同RegisterNginxFRPAndRun。
 func (c *MajulaClient) RemoveNginxFRP(mappedAddr, remoteNode, hostAddr string, extraArgs map[string]string) {
 	extraBytes, err := json.Marshal(extraArgs)
 	if err != nil {
@@ -471,6 +568,8 @@ func (c *MajulaClient) RemoveNginxFRP(mappedAddr, remoteNode, hostAddr string, e
 	})
 }
 
+// TransferFileToRemote 向远程节点传输本地文件。
+// 参数：remoteNode - 远程节点，localPath - 本地文件路径，remotePath - 远程文件路径。
 func (c *MajulaClient) TransferFileToRemote(remoteNode, localPath, remotePath string) {
 	c.Send(MajulaPackage{
 		Method: "UPLOAD_FILE",
@@ -482,6 +581,8 @@ func (c *MajulaClient) TransferFileToRemote(remoteNode, localPath, remotePath st
 	})
 }
 
+// DownloadFileFromRemote 从远程节点下载文件到本地。
+// 参数：remoteNode - 远程节点，remotePath - 远程文件路径，localPath - 本地文件路径。
 func (c *MajulaClient) DownloadFileFromRemote(remoteNode, remotePath, localPath string) {
 	c.Send(MajulaPackage{
 		Method: "DOWNLOAD_FILE",
