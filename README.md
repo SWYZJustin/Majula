@@ -76,7 +76,7 @@ curl -X POST http://localhost:8080/majula/rpc -d '{"fun":"add","args":{"a":1,"b"
 
 ---
 
-## 🔗 WebSocket API (Recommended)
+## 🔗 WebSocket API
 
 ### Connection
 ```
