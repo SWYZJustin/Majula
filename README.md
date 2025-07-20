@@ -1,4 +1,4 @@
-# Majula Distributed Communication Middleware
+# Majula Distributed Communication Middleware (MDCM V1.0)
 
 Majula is a lightweight, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios. 
 
