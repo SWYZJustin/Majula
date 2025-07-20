@@ -1,18 +1,26 @@
 # Majula Distributed Communication Middleware
 
-Majula is a high-performance, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios.
+Majula is a lightweight, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios.
 
 ---
 
 ## 🌟 Features
 
 - **Distributed Node Management**: Automatic node discovery, heartbeat, and link management.
-- **High-Performance Message Routing**: Point-to-point, topic pub/sub, and broadcast messaging.
+- **Lightweight Message Routing**: Point-to-point, topic pub/sub, and broadcast messaging.
 - **RPC (Remote Procedure Call)**: Register and invoke custom RPC services between nodes, supporting sync/async calls.
 - **WebSocket & HTTP APIs**: Unified, extensible API for both WebSocket and RESTful HTTP clients.
 - **FRP NAT Traversal**: Built-in FRP tunneling for seamless node-to-node communication and file transfer across NATs.
 - **Dynamic Nginx Reverse Proxy**: Register and expose local services to remote nodes via HTTP mapping.
 - **Extensible Architecture**: Modular, easy to extend and integrate into your own systems.
+
+---
+
+## 🚧 Planned Features
+
+- **Client Election**: Implement distributed client election to support leader selection and failover scenarios.
+- **Consistency Features**: Add distributed consistency mechanisms (such as consensus protocols, state synchronization, etc.) to ensure data reliability and coordination across nodes.
+- **Network & Other Optimizations**: Further optimize network performance, resource usage, and add more advanced features for scalability and robustness.
 
 ---
 
@@ -74,7 +82,7 @@ ws://localhost:8080/majula/ws/{client_id}
 All WebSocket messages are JSON objects with the following structure:
 ```json
 {
-  "method": "SUBSCRIBE|PUBLISH|RPC|SEND|REGISTER_RPC|UNREGISTER_RPC|QUIT|...",
+  "method": "SUBSCRIBE|UNSUBSCRIBE|PUBLISH|RPC|REGISTER_RPC|UNREGISTER_RPC|SEND|QUIT|PRIVATE_MESSAGE|SUB_RESULT|RPC_RESULT|RETURN_RESULT|HEARTBEAT|REGISTER_CLIENT|REGISTER_FRP|REGISTER_FRP_WITH_ADDR|START_FRP_LISTENER_WITH_REGISTRATION|START_FRP_LISTENER_WITHOUT_REGISTRATION|START_FRP_LISTENER_WITH_LOCAL_ADDR|REGISTER_NGINX_FRP_AND_RUN|UNREGISTER_NGINX_FRP|UPLOAD_FILE|DOWNLOAD_FILE|...",
   "topic": "test",           // Topic (optional)
   "fun": "add",              // RPC function name (optional)
   "args": {"a":1,"b":2},    // Parameters (optional)
@@ -83,7 +91,7 @@ All WebSocket messages are JSON objects with the following structure:
 }
 ```
 
-#### Common Methods
+#### Supported Methods
 - `SUBSCRIBE`: Subscribe to a topic
 - `UNSUBSCRIBE`: Unsubscribe from a topic
 - `PUBLISH`: Publish a message to a topic
@@ -91,7 +99,23 @@ All WebSocket messages are JSON objects with the following structure:
 - `REGISTER_RPC`: Register a local RPC service
 - `UNREGISTER_RPC`: Unregister a local RPC service
 - `SEND`: Send a private (P2P) message
+- `PRIVATE_MESSAGE`: Receive a private message
+- `SUB_RESULT`: Receive a topic message
+- `RPC_RESULT`: Receive an RPC result
+- `RETURN_RESULT`: Return result for an RPC call
+- `HEARTBEAT`: Heartbeat message
+- `REGISTER_CLIENT`: Register client ID
+- `REGISTER_FRP`: Register an FRP tunnel
+- `REGISTER_FRP_WITH_ADDR`: Register FRP by address
+- `START_FRP_LISTENER_WITH_REGISTRATION`: Start FRP listener (registered)
+- `START_FRP_LISTENER_WITHOUT_REGISTRATION`: Start FRP listener (dynamic)
+- `START_FRP_LISTENER_WITH_LOCAL_ADDR`: Start FRP listener by local address
+- `REGISTER_NGINX_FRP_AND_RUN`: Register and run Nginx reverse proxy
+- `UNREGISTER_NGINX_FRP`: Unregister Nginx reverse proxy
+- `UPLOAD_FILE`: Upload file to remote node
+- `DOWNLOAD_FILE`: Download file from remote node
 - `QUIT`: Disconnect
+- ... (and more, see code for full list)
 
 #### Server Push Example
 ```json
@@ -164,11 +188,3 @@ client.Quit()
 
 ## 💡 Contact & Contribute
 For suggestions, bug reports, or contributions, feel free to open an Issue or PR!
-
----
-
-## 🚧 Planned Features
-
-- **Client Election**: Implement distributed client election to support leader selection and failover scenarios.
-- **Consistency Features**: Add distributed consistency mechanisms (such as consensus protocols, state synchronization, etc.) to ensure data reliability and coordination across nodes.
-- **Network & Other Optimizations**: Further optimize network performance, resource usage, and add more advanced features for scalability and robustness.
