@@ -2,8 +2,9 @@
 
 Majula is a lightweight, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios. 
 
-The name Majula comes from Dark Souls II. It represents the Firelink Shrine in that game and probably the warmest place in the Souls series. I hope my middleware could support the connections between people as well. (Remote devices, more likely)
+The name Majula comes from Dark Souls II. It represents the Firelink Shrine in that game and probably the warmest place in the Souls series. People meet in adventures and come togather around the Firelink Shrine. I hope my middleware can help connect people as well — or more likely, the devices.
 
+Super excited to roll out v1.0! It is a version that the basic functionalities inside my mind come to place and could work through simple tests. More debugs and improvements on the way!
 ---
 
 ## 🌟 Features
