@@ -1,6 +1,8 @@
 # Majula Distributed Communication Middleware
 
-Majula is a lightweight, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios.
+Majula is a lightweight, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios. 
+
+The name Majula comes from Dark Souls II. It represents the Firelink Shrine in that game and probably the warmest place in the Souls series. I hope my middleware could support the connections between people as well. (Remote devices, more likely)
 
 ---
 
@@ -36,6 +38,7 @@ go mod tidy
 nohup go run MajulaNodeFromYaml.go MajulaNode1.yaml &
 nohup go run MajulaNodeFromYaml.go MajulaNode2.yaml &
 ```
+This will start two connected nodes on local.
 > You can customize node configuration via `MajulaNodeTemplate.yaml`.
 
 ### 3. Connect and Test
