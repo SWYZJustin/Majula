@@ -25,11 +25,21 @@ type TCPConfigYaml struct {
 	TLS                  *TLSConfigYaml `yaml:"tls"`
 }
 
+type KCPConfigYaml struct {
+	FrameSize            int      `yaml:"frame_size"`
+	InactiveSeconds      int64    `yaml:"inactive_seconds"`
+	SendQueueSize        int      `yaml:"send_queue_size"`
+	MaxConnectionsPerSec int      `yaml:"max_connections_per_sec"`
+	IPWhitelist          []string `yaml:"ip_whitelist"`
+}
+
 type ChannelConfigYaml struct {
 	Type       string        `yaml:"type"`
+	Protocol   string        `yaml:"protocol"`
 	ListenAddr string        `yaml:"listen_addr"`
 	RemoteAddr string        `yaml:"remote_addr"`
 	TCP        TCPConfigYaml `yaml:"tcp"`
+	KCP        KCPConfigYaml `yaml:"kcp"`
 }
 
 type MajulaServerConfigYaml struct {
@@ -79,14 +89,29 @@ func validateConfig(conf *NodeConfigYaml) error {
 		if ch.Type == "client" && ch.RemoteAddr == "" {
 			return fmt.Errorf("channels[%d] 的 remote_addr 不能为空", i)
 		}
-		if ch.TCP.FrameSize <= 0 {
-			return fmt.Errorf("channels[%d] 的 tcp.frame_size 必须大于0", i)
-		}
-		if ch.TCP.InactiveSeconds <= 0 {
-			return fmt.Errorf("channels[%d] 的 tcp.inactive_seconds 必须大于0", i)
-		}
-		if ch.TCP.SendQueueSize <= 0 {
-			return fmt.Errorf("channels[%d] 的 tcp.send_queue_size 必须大于0", i)
+		if ch.Protocol == "kcp" {
+			if ch.KCP.FrameSize <= 0 {
+				return fmt.Errorf("channels[%d] 的 kcp.frame_size 必须大于0", i)
+			}
+			if ch.KCP.InactiveSeconds <= 0 {
+				return fmt.Errorf("channels[%d] 的 kcp.inactive_seconds 必须大于0", i)
+			}
+			if ch.KCP.SendQueueSize <= 0 {
+				return fmt.Errorf("channels[%d] 的 kcp.send_queue_size 必须大于0", i)
+			}
+			if ch.TCP.TLS != nil {
+				return fmt.Errorf("channels[%d] 的 kcp 配置下不能有 tls 字段", i)
+			}
+		} else { // 默认tcp
+			if ch.TCP.FrameSize <= 0 {
+				return fmt.Errorf("channels[%d] 的 tcp.frame_size 必须大于0", i)
+			}
+			if ch.TCP.InactiveSeconds <= 0 {
+				return fmt.Errorf("channels[%d] 的 tcp.inactive_seconds 必须大于0", i)
+			}
+			if ch.TCP.SendQueueSize <= 0 {
+				return fmt.Errorf("channels[%d] 的 tcp.send_queue_size 必须大于0", i)
+			}
 		}
 	}
 	return nil
@@ -123,32 +148,59 @@ func main() {
 	}
 
 	for _, ch := range conf.Channels {
-		tlsConfig, err := buildTLSConfig(ch.TCP.TLS)
-		if err != nil {
-			log.Fatalf("加载TLS证书失败: %v", err)
-		}
-		if ch.Type == "server" {
-			worker := core.NewTcpConnection(
-				"_server_"+ch.ListenAddr, false, ch.ListenAddr, "", ch.TCP.IPWhitelist,
-				ch.TCP.FrameSize, ch.TCP.InactiveSeconds, ch.TCP.SendQueueSize, ch.TCP.MaxConnectionsPerSec, tlsConfig, conf.Token,
-			)
-			if worker == nil {
-				log.Fatalf("创建server通道失败: %s", ch.ListenAddr)
+		if ch.Protocol == "kcp" {
+			// KCP通道
+			if ch.Type == "server" {
+				worker := core.NewKCPChannelWorker(
+					"_server_"+ch.ListenAddr, false, ch.ListenAddr, "", ch.KCP.IPWhitelist,
+					ch.KCP.FrameSize, ch.KCP.InactiveSeconds, ch.KCP.SendQueueSize, ch.KCP.MaxConnectionsPerSec, conf.Token,
+				)
+				if worker == nil {
+					log.Fatalf("创建KCP server通道失败: %s", ch.ListenAddr)
+				}
+				channel := core.NewChannelFull(ch.ListenAddr+"-channel", node, worker)
+				worker.User = channel
+				node.AddChannel(channel)
+			} else if ch.Type == "client" {
+				worker := core.NewKCPChannelWorker(
+					"_client_"+ch.RemoteAddr, true, "", ch.RemoteAddr, ch.KCP.IPWhitelist,
+					ch.KCP.FrameSize, ch.KCP.InactiveSeconds, ch.KCP.SendQueueSize, ch.KCP.MaxConnectionsPerSec, conf.Token,
+				)
+				if worker == nil {
+					log.Fatalf("创建KCP client通道失败: %s", ch.RemoteAddr)
+				}
+				channel := core.NewChannelFull(ch.RemoteAddr+"-channel", node, worker)
+				worker.User = channel
+				node.AddChannel(channel)
 			}
-			channel := core.NewChannelFull(ch.ListenAddr+"-channel", node, worker)
-			worker.User = channel
-			node.AddChannel(channel)
-		} else if ch.Type == "client" {
-			worker := core.NewTcpConnection(
-				"_client_"+ch.RemoteAddr, true, "", ch.RemoteAddr, ch.TCP.IPWhitelist,
-				ch.TCP.FrameSize, ch.TCP.InactiveSeconds, ch.TCP.SendQueueSize, ch.TCP.MaxConnectionsPerSec, tlsConfig, conf.Token,
-			)
-			if worker == nil {
-				log.Fatalf("创建client通道失败: %s", ch.RemoteAddr)
+		} else { // 默认tcp
+			tlsConfig, err := buildTLSConfig(ch.TCP.TLS)
+			if err != nil {
+				log.Fatalf("加载TLS证书失败: %v", err)
 			}
-			channel := core.NewChannelFull(ch.RemoteAddr+"-channel", node, worker)
-			worker.User = channel
-			node.AddChannel(channel)
+			if ch.Type == "server" {
+				worker := core.NewTcpConnection(
+					"_server_"+ch.ListenAddr, false, ch.ListenAddr, "", ch.TCP.IPWhitelist,
+					ch.TCP.FrameSize, ch.TCP.InactiveSeconds, ch.TCP.SendQueueSize, ch.TCP.MaxConnectionsPerSec, tlsConfig, conf.Token,
+				)
+				if worker == nil {
+					log.Fatalf("创建server通道失败: %s", ch.ListenAddr)
+				}
+				channel := core.NewChannelFull(ch.ListenAddr+"-channel", node, worker)
+				worker.User = channel
+				node.AddChannel(channel)
+			} else if ch.Type == "client" {
+				worker := core.NewTcpConnection(
+					"_client_"+ch.RemoteAddr, true, "", ch.RemoteAddr, ch.TCP.IPWhitelist,
+					ch.TCP.FrameSize, ch.TCP.InactiveSeconds, ch.TCP.SendQueueSize, ch.TCP.MaxConnectionsPerSec, tlsConfig, conf.Token,
+				)
+				if worker == nil {
+					log.Fatalf("创建client通道失败: %s", ch.RemoteAddr)
+				}
+				channel := core.NewChannelFull(ch.RemoteAddr+"-channel", node, worker)
+				worker.User = channel
+				node.AddChannel(channel)
+			}
 		}
 	}
 

@@ -4,7 +4,6 @@ import (
 	"Majula/common"
 	"bufio"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -385,7 +384,7 @@ func (this *TcpChannelWorker) trySendRegisterMessage(link *TcpLink) {
 		To:   "",
 	}
 
-	sentItem, err := json.Marshal(RegisterMsg)
+	sentItem, err := common.MarshalAny(RegisterMsg)
 	if err != nil {
 		fmt.Println("Error marshaling Register message:", err)
 		return
@@ -626,7 +625,7 @@ func (this *TcpChannelWorker) processPackage(pkg IpPackage) {
 
 	if len(pkg.Data) > 0 {
 		var msg Message
-		err := json.Unmarshal(pkg.Data, &msg)
+		err := common.UnmarshalAny(pkg.Data, &msg)
 
 		if err != nil {
 			//fmt.Printf("failed to decode message: %v", err)
@@ -778,7 +777,7 @@ func (this *TcpChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
 	this.MutexForTcpLinks.RLock()
 
 	if ras, ok := this.LinksAddrFromPeer[nextHopNodeId]; ok {
-		sentItem, _ := json.Marshal(msg)
+		sentItem, _ := common.MarshalAny(msg)
 		ba := this.wrapToDataFrame(sentItem)
 		for _, ra := range ras {
 			if link, ok := this.TcpLinks[ra]; ok {
@@ -804,7 +803,7 @@ func (this *TcpChannelWorker) broadCast(msg *Message) {
 	if msg == nil {
 		return
 	}
-	sentItem, _ := json.Marshal(msg)
+	sentItem, _ := common.MarshalAny(msg)
 	go func(ba []byte, important bool) {
 		if len(ba) > 0 {
 			links := this.GetAllConns()

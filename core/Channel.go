@@ -152,6 +152,7 @@ func (channel *Channel) send(nextHopNodeId string, msg *Message) {
 // 参数：sourceNodeId - 消息来源节点ID，msg - 消息内容。
 func (channel *Channel) onRecv(sourceNodeId string, msg *Message) {
 	channel.DebugPrint("onRecv", msg.Print())
+	//fmt.Println(channel.HNode.ID+" onRecv ", msg.Print())
 	if sourceNodeId == channel.HNode.ID {
 		return
 	}
@@ -291,6 +292,7 @@ func (channel *Channel) onConnectChanged(worker ChannelWorker, connected bool) {
 			Lost:       false,
 			LastSender: channel.HNode.ID,
 		}
+		//fmt.Println("[DEBUG] "+channel.HNode.ID+" onConnectChanged", msg.Print())
 		channel.DebugPrint("onConnectedChanged", "BroadCast Hello")
 		go worker.broadCast(msg)
 	}

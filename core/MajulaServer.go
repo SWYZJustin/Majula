@@ -198,7 +198,7 @@ func (s *Server) handleSubscribePackage(client *ClientConnection, pkg api.Majula
 	}
 	s.Node.addLocalSub(topic, client.ID, func(topic, from, to string, content []byte) {
 		var args map[string]interface{}
-		_ = json.Unmarshal(content, &args)
+		_ = common.UnmarshalAny(content, &args)
 		client.SendCh <- api.MajulaPackage{
 			Method: "SUB_RESULT",
 			Topic:  topic,
@@ -220,7 +220,7 @@ func (s *Server) handleUnsubscribePackage(client *ClientConnection, pkg api.Maju
 // 处理客户端发布消息包。
 // 参数：client - 客户端连接，pkg - 发布包。
 func (s *Server) handlePublishPackage(client *ClientConnection, pkg api.MajulaPackage) {
-	argsBytes, _ := json.Marshal(pkg.Args)
+	argsBytes, _ := common.MarshalAny(pkg.Args)
 	s.Node.publishOnTopic(pkg.Topic, string(argsBytes))
 }
 
@@ -240,7 +240,7 @@ func (s *Server) handleSendPackage(client *ClientConnection, pkg api.MajulaPacka
 		"target_client": targetClient,
 		"payload":       content,
 	}
-	dataBytes, err := json.Marshal(payload)
+	dataBytes, err := common.MarshalAny(payload)
 	if err != nil {
 		log.Println("SEND json marshal failed:", err)
 		return
@@ -822,7 +822,7 @@ func (s *Server) handleSubscribe(c *gin.Context) {
 
 	s.Node.addLocalSub(topic, clientID, func(topic, from, to string, content []byte) {
 		var args map[string]interface{}
-		_ = json.Unmarshal(content, &args)
+		_ = common.UnmarshalAny(content, &args)
 		select {
 		case client.SendCh <- api.MajulaPackage{
 			Method: "PUBLISH",
@@ -1035,7 +1035,8 @@ func (s *Server) handleSend(c *gin.Context) {
 		"target_client": targetClient,
 		"payload":       msg,
 	}
-	dataBytes, _ := json.Marshal(payload)
+	
+	dataBytes, _ := common.MarshalAny(payload)
 
 	message := &Message{
 		MessageData: MessageData{

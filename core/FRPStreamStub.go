@@ -3,7 +3,6 @@ package core
 import (
 	"Majula/common"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
@@ -313,6 +312,7 @@ func (stub *StreamStub) sendDataLoop(ctx context.Context) {
 			stub.doClose()
 			return
 		case data := <-stub.readChan:
+			//fmt.Printf("[FRP sendDataLoop] readChan got data, len=%d\n", len(data))
 			stub.lastActivityTime.Store(time.Now())
 			seq := atomic.AddInt64(&stub.sendSeq, 1)
 
@@ -337,13 +337,14 @@ func (stub *StreamStub) sendDataLoop(ctx context.Context) {
 // 实际发送一条数据到对端。
 // 参数：seq - 序号，data - 数据内容。
 func (stub *StreamStub) sendData(seq int64, data []byte) {
+	//fmt.Printf("[FRP sendData] seq=%d, len=%d\n", seq, len(data))
 	stub.lastActivityTime.Store(time.Now())
 	payload := FRPDataPayload{
 		TargetStubID: stub.peerStubId,
 		Seq:          seq,
 		Data:         data,
 	}
-	payloadJSON, _ := json.Marshal(payload)
+	payloadJSON, _ := common.MarshalAny(payload)
 
 	msg := &Message{
 		MessageData: MessageData{
@@ -366,10 +367,11 @@ func (stub *StreamStub) sendData(seq int64, data []byte) {
 func (stub *StreamStub) onData(content []byte) {
 	stub.lastActivityTime.Store(time.Now())
 	var payload FRPDataPayload
-	if err := json.Unmarshal(content, &payload); err != nil || payload.TargetStubID != stub.myId {
+	if err := common.UnmarshalAny(content, &payload); err != nil || payload.TargetStubID != stub.myId {
 		stub.DebugPrint("stub "+stub.myId+"onData", "data error")
 		return
 	}
+	//fmt.Printf("[FRP onData] payload.Seq=%d, len=%d\n", payload.Seq, len(payload.Data))
 	stub.DebugPrint("stub "+stub.myId+"onData", payload.String())
 
 	stub.recvWindowLock.Lock()
@@ -427,7 +429,7 @@ func (stub *StreamStub) sendAck() {
 		TargetStubID: stub.peerStubId,
 		Ack:          stub.recvSeq,
 	}
-	ackData, _ := json.Marshal(ackPayload)
+	ackData, _ := common.MarshalAny(ackPayload)
 
 	ackMsg := &Message{
 		MessageData: MessageData{
@@ -448,7 +450,7 @@ func (stub *StreamStub) sendAck() {
 func (stub *StreamStub) onAck(content []byte) {
 	stub.lastActivityTime.Store(time.Now())
 	var payload FRPAckPayload
-	if err := json.Unmarshal(content, &payload); err != nil || payload.TargetStubID != stub.myId {
+	if err := common.UnmarshalAny(content, &payload); err != nil || payload.TargetStubID != stub.myId {
 		stub.DebugPrint("stub "+stub.myId+"onAck", "data error")
 		return
 	}
@@ -593,11 +595,13 @@ func (stub *StreamStub) startReadFromConn() {
 				return
 			}
 			if n > 0 {
+				//fmt.Printf("[FRP startReadFromConn] read data, len=%d\n", n)
 				data := make([]byte, n)
 				copy(data, buf[:n])
 
 				select {
 				case stub.readChan <- data:
+					//fmt.Printf("[FRP startReadFromConn] data pushed to readChan\n")
 				case <-stub.cancelCtx.Done():
 					return
 				}
@@ -648,7 +652,7 @@ func (stub *StreamStub) sendResendRequest(seq int64) {
 		TargetStubID: stub.peerStubId,
 		Seq:          seq,
 	}
-	data, _ := json.Marshal(req)
+	data, _ := common.MarshalAny(req)
 
 	msg := &Message{
 		MessageData: MessageData{
@@ -670,7 +674,7 @@ func (stub *StreamStub) onResendRequest(content []byte) {
 	stub.lastActivityTime.Store(time.Now())
 
 	var payload FRPResendRequestPayload
-	if err := json.Unmarshal(content, &payload); err != nil || payload.TargetStubID != stub.myId {
+	if err := common.UnmarshalAny(content, &payload); err != nil || payload.TargetStubID != stub.myId {
 		stub.DebugPrint("stub "+stub.myId+"onResendRequest", "data error")
 		return
 	}
@@ -693,10 +697,12 @@ func (stub *StreamStub) onResendRequest(content []byte) {
 // 将数据加入写入队列。
 // 参数：data - 要写入的数据。
 func (stub *StreamStub) enqueueWrite(data []byte) {
+	//fmt.Printf("[FRP enqueueWrite] data len=%d\n", len(data))
 	select {
 	case stub.writeChan <- data:
+		//fmt.Printf("[FRP enqueueWrite] data enqueued\n")
 	default:
-		fmt.Println("Write channel full, dropping data")
+		fmt.Printf("[FRP enqueueWrite] writeChan full, dropping data\n")
 	}
 }
 
@@ -708,9 +714,10 @@ func (stub *StreamStub) writeLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case data := <-stub.writeChan:
+			//fmt.Printf("[FRP writeLoop] writing data, len=%d\n", len(data))
 			_, err := stub.conn.Write(data)
 			if err != nil {
-				fmt.Println("Write error:", err)
+				//fmt.Printf("[FRP writeLoop] Write error: %v\n", err)
 				stub.doClose()
 				return
 			} else {

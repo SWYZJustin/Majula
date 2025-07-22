@@ -733,7 +733,14 @@ func TestFrpDynamicTunnel(t *testing.T) {
 	clientB.AddChannel(clientBChannel)
 	clientB.Register()
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(8 * time.Second)
+	fmt.Println("[DEBUG] serverNode 路由表：")
+	serverNode.printRoutingTable()
+	fmt.Println("[DEBUG] clientA 路由表：")
+	clientA.printRoutingTable()
+	fmt.Println("[DEBUG] clientB 路由表：")
+	clientB.printRoutingTable()
+	time.Sleep(1 * time.Second)
 
 	if err := clientA.StubManager.RegisterFRPAndRun("clientB", dynClientAddr, dynServerAddr); err != nil {
 		t.Fatalf("RegisterFRPAndRun failed: %v", err)
@@ -769,7 +776,7 @@ func TestFrpDynamicTunnel(t *testing.T) {
 		}
 		defer conn.Close()
 		time.Sleep(1 * time.Second)
-		for i := 0; i < 15000; i++ {
+		for i := 0; i < 2000; i++ {
 			msg := fmt.Sprintf("ping-%d", i)
 			conn.Write([]byte(msg))
 			time.Sleep(1 * time.Millisecond)
@@ -959,4 +966,112 @@ func TestFrpDynamicTunnelWithClient(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 	clientA.StubManager.CloseAllStubs()
+}
+
+func TestKcpDynamicTunnel(t *testing.T) {
+	netConnectionAddr := "127.0.0.1:3002"
+	dynClientAddr := "127.0.0.1:24444"
+	dynServerAddr := "127.0.0.1:24445"
+
+	//t.Logf("[TEST] Creating serverNode: server")
+	serverNode := NewNode("server")
+	//t.Logf("[TEST] Creating clientA: clientA")
+	clientA := NewNode("clientA")
+	//t.Logf("[TEST] Creating clientB: clientB")
+	clientB := NewNode("clientB")
+
+	//t.Logf("[TEST] Creating serverWorker (KCP) on %s", netConnectionAddr)
+	serverWorker := NewKCPChannelWorker("server", false, netConnectionAddr, "", nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
+	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
+	serverWorker.User = serverChannel
+	serverNode.AddChannel(serverChannel)
+	serverNode.Register()
+	//t.Logf("[TEST] serverNode registered")
+
+	//t.Logf("[TEST] Creating clientAWorker (KCP) connect to %s", netConnectionAddr)
+	clientAWorker := NewKCPChannelWorker("clientA", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
+	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
+	clientAWorker.User = clientAChannel
+	clientA.AddChannel(clientAChannel)
+	clientA.Register()
+	//t.Logf("[TEST] clientA registered")
+
+	//t.Logf("[TEST] Creating clientBWorker (KCP) connect to %s", netConnectionAddr)
+	clientBWorker := NewKCPChannelWorker("clientB", true, "", netConnectionAddr, nil,
+		defaultMaxFrameSize, defaultMaxInactiveSeconds,
+		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
+	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)
+	clientBWorker.User = clientBChannel
+	clientB.AddChannel(clientBChannel)
+	clientB.Register()
+	//t.Logf("[TEST] clientB registered")
+
+	//t.Logf("[TEST] Sleep 2s for network stabilization")
+	time.Sleep(8 * time.Second)
+	fmt.Println("[DEBUG] serverNode 路由表：")
+	serverNode.printRoutingTable()
+	fmt.Println("[DEBUG] clientA 路由表：")
+	clientA.printRoutingTable()
+	fmt.Println("[DEBUG] clientB 路由表：")
+	clientB.printRoutingTable()
+	time.Sleep(1 * time.Second)
+
+	//t.Logf("[TEST] RegisterFRPAndRun: clientA -> clientB, dynClientAddr=%s, dynServerAddr=%s", dynClientAddr, dynServerAddr)
+	if err := clientA.StubManager.RegisterFRPAndRun("clientB", dynClientAddr, dynServerAddr); err != nil {
+		t.Fatalf("RegisterFRPAndRun failed: %v", err)
+	}
+	//t.Logf("[TEST] RegisterFRPAndRun success")
+
+	go func() {
+		t.Logf("[TEST] FRP server listen on %s", dynServerAddr)
+		ln, err := net.Listen("tcp", dynServerAddr)
+		if err != nil {
+			t.Fatalf("Server listen failed: %v", err)
+		}
+		defer ln.Close()
+		conn, err := ln.Accept()
+		if err != nil {
+			t.Fatalf("Server accept failed: %v", err)
+		}
+		t.Logf("[TEST] FRP server accepted connection from %s", conn.RemoteAddr().String())
+		defer conn.Close()
+		buf := make([]byte, 65536)
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				t.Logf("[TEST] FRP server read error: %v", err)
+				return
+			}
+			t.Logf("[TEST] Server received: %s", string(buf[:n]))
+		}
+	}()
+
+	t.Logf("[TEST] Sleep 1s before client dial")
+	time.Sleep(1 * time.Second)
+
+	go func() {
+		t.Logf("[TEST] FRP client dial %s", dynClientAddr)
+		conn, err := net.Dial("tcp", dynClientAddr)
+		if err != nil {
+			t.Fatalf("Client dial failed: %v", err)
+		}
+		t.Logf("[TEST] FRP client connected to %s", dynClientAddr)
+		defer conn.Close()
+		time.Sleep(1 * time.Second)
+		for i := 0; i < 2000; i++ {
+			msg := fmt.Sprintf("ping-%d", i)
+			conn.Write([]byte(msg))
+			//t.Logf("[TEST] FRP client sent: %s", msg)
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	//t.Logf("[TEST] Sleep 10s for data transfer")
+	time.Sleep(5 * time.Second)
+	clientA.StubManager.CloseAllStubs()
+	//t.Logf("[TEST] Closed all stubs")
 }

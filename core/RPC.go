@@ -2,7 +2,6 @@ package core
 
 import (
 	"Majula/common"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -67,7 +66,7 @@ func (node *Node) floodRpcServices() {
 		NodeID:    node.ID,
 		Functions: functions,
 	}
-	data, _ := json.Marshal(info)
+	data, _ := common.MarshalAny(info)
 
 	msg := &Message{
 		MessageData: MessageData{
@@ -183,7 +182,7 @@ func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun str
 		Fun:    fun,
 		Params: params,
 	}
-	data, err := json.Marshal(cRequestData)
+	data, err := common.MarshalAny(cRequestData)
 	if err != nil {
 		node.DebugPrint("makeRpcRequest_"+fun+"_"+peer, "error marshaling request data: "+err.Error())
 		node.ActiveStubsMutex.Unlock()
@@ -286,7 +285,7 @@ func (node *Node) handleRpcRequest(msg *Message) {
 	node.DebugPrint("handleRpcRequest", msg.Print())
 
 	var rpcReq RPC_Request
-	err := json.Unmarshal([]byte(msg.MessageData.Data), &rpcReq)
+	err := common.UnmarshalAny([]byte(msg.MessageData.Data), &rpcReq)
 	if err != nil {
 		node.DebugPrint("handleRpcRequest", "Failed to parse request: "+err.Error())
 		node.sendRpcErrorResponse(msg, "", "invalid JSON format")
@@ -322,7 +321,7 @@ func (node *Node) handleRpcRequest(msg *Message) {
 		Fun:    rpcReq.Fun,
 		Result: result,
 	}
-	respBytes, err := json.Marshal(resp)
+	respBytes, err := common.MarshalAny(resp)
 	if err != nil {
 		node.DebugPrint("handleRpcRequest", "Failed to marshal response: "+err.Error())
 		node.sendRpcErrorResponse(msg, rpcReq.Fun, "internal error: response marshal failed")
@@ -350,7 +349,7 @@ func (node *Node) sendRpcErrorResponse(msg *Message, fun string, errMsg string) 
 		Fun:   fun,
 		Error: errMsg,
 	}
-	respBytes, err := json.Marshal(resp)
+	respBytes, err := common.MarshalAny(resp)
 	if err != nil {
 		node.DebugPrint("sendRpcErrorResponse", "Failed to marshal error response: "+err.Error())
 		return
@@ -376,7 +375,7 @@ func (node *Node) handleRpcResponse(msg *Message) {
 	node.DebugPrint("handleRpcResponse", msg.Print())
 
 	var resp RPC_Resp
-	err := json.Unmarshal([]byte(msg.MessageData.Data), &resp)
+	err := common.UnmarshalAny([]byte(msg.MessageData.Data), &resp)
 	if err != nil {
 		node.DebugPrint("handleRpcResponse", "Failed to parse response: "+err.Error())
 		return
@@ -411,7 +410,7 @@ func (node *Node) handleRpcResponse(msg *Message) {
 // 参数：msg - 消息。
 func (node *Node) handleRpcServiceFlood(msg *Message) {
 	var info RpcServiceInfo
-	err := json.Unmarshal([]byte(msg.MessageData.Data), &info)
+	err := common.UnmarshalAny([]byte(msg.MessageData.Data), &info)
 	if err != nil {
 		node.DebugPrint("handleRpcServiceFlood", "invalid payload: "+err.Error())
 		return

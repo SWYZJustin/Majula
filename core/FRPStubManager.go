@@ -1,7 +1,7 @@
 package core
 
 import (
-	"encoding/json"
+	"Majula/common"
 	"fmt"
 	"net"
 	"os"
@@ -665,7 +665,7 @@ func (sm *StubManager) handleFrpMessages(msg *Message) {
 	switch msg.Type {
 	case FRPData:
 		var payload FRPDataPayload
-		if err := json.Unmarshal([]byte(msg.Data), &payload); err != nil {
+		if err := common.UnmarshalAny([]byte(msg.Data), &payload); err != nil {
 			fmt.Println("FRPData unmarshal error:", err)
 			return
 		}
@@ -673,7 +673,7 @@ func (sm *StubManager) handleFrpMessages(msg *Message) {
 
 	case FRPAck:
 		var payload FRPAckPayload
-		if err := json.Unmarshal([]byte(msg.Data), &payload); err != nil {
+		if err := common.UnmarshalAny([]byte(msg.Data), &payload); err != nil {
 			fmt.Println("FRPAck unmarshal error:", err)
 			return
 		}
@@ -681,7 +681,7 @@ func (sm *StubManager) handleFrpMessages(msg *Message) {
 
 	case FRPResendRequest:
 		var payload FRPResendRequestPayload
-		if err := json.Unmarshal([]byte(msg.Data), &payload); err != nil {
+		if err := common.UnmarshalAny([]byte(msg.Data), &payload); err != nil {
 			fmt.Println("FRPResendRequest unmarshal error:", err)
 			return
 		}

@@ -7,6 +7,7 @@ majula_servers:
 
 channels:
   - type: "server"
+    protocol: "tcp"
     listen_addr: "127.0.0.1:29090"
     tcp:
       frame_size: 4096
@@ -17,10 +18,21 @@ channels:
       # tls:
       #   cert_file: "tcp_server.crt"  # 可选，启用TLS时填写证书路径
       #   key_file: "tcp_server.key"    # 可选，启用TLS时填写密钥路径
- #- type: "client"
- #  remote_addr: "192.168.1.2:29090"
- #  peer_id: "serverNode"
- #  tcp:
- #    frame_size: 4096
- #    inactive_seconds: 10
- #    send_queue_size: 1000
+  - type: "server"
+    protocol: "kcp"
+    listen_addr: "127.0.0.1:30090"
+    kcp:
+      frame_size: 4096
+      inactive_seconds: 10
+      send_queue_size: 1000
+      max_connections_per_sec: 5
+      # ip_whitelist: ["127.0.0.1", "192.168.1.0/24"]  # 可选，限制允许连接的IP
+# - type: "client"
+#   protocol: "tcp"
+#   remote_addr: "192.168.1.2:29090"
+#   peer_id: "serverNode"
+#   tcp:
+#     frame_size: 4096
+#     inactive_seconds: 10
+#     send_queue_size: 1000
+#     max_connections_per_sec: 5

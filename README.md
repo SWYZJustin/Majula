@@ -13,6 +13,7 @@ Majula is a lightweight, distributed communication middleware written in Go. It 
 - **FRP NAT Traversal**: Built-in FRP tunneling for seamless node-to-node communication and file transfer across NATs.
 - **Dynamic Nginx Reverse Proxy**: Register and expose local services to remote nodes via HTTP mapping.
 - **Extensible Architecture**: Modular, easy to extend and integrate into your own systems.
+- **High-Performance KCP Channel**: Supports KCP-based reliable UDP channels for weak network and high-performance scenarios.
 
 ---
 
@@ -37,6 +38,35 @@ nohup go run MajulaNodeFromYaml.go MajulaNode1.yaml &
 nohup go run MajulaNodeFromYaml.go MajulaNode2.yaml &
 ```
 > You can customize node configuration via `MajulaNodeTemplate.yaml`.
+
+### Channel Protocol Configuration (TCP/KCP)
+
+Majula now supports both **TCP** and **KCP** channels. You can specify the protocol for each channel in your YAML config:
+
+```yaml
+channels:
+  - type: "server"
+    protocol: "tcp"
+    listen_addr: "127.0.0.1:29090"
+    tcp:
+      frame_size: 4096
+      inactive_seconds: 10
+      send_queue_size: 1000
+      max_connections_per_sec: 5
+      # tls: ...
+  - type: "server"
+    protocol: "kcp"
+    listen_addr: "127.0.0.1:30090"
+    kcp:
+      frame_size: 4096
+      inactive_seconds: 10
+      send_queue_size: 1000
+      max_connections_per_sec: 5
+      # Note: KCP channels do NOT support TLS.
+```
+- `protocol`: `tcp` or `kcp` (default is `tcp` if omitted for backward compatibility)
+- `tcp` block: supports all TCP options, including optional TLS.
+- `kcp` block: supports KCP options, **does not support TLS**.
 
 ### 3. Connect and Test
 - Use a WebSocket client or curl/Postman for HTTP testing.
@@ -182,6 +212,7 @@ client.Quit()
 - `api/`: Client SDK & API definitions
 - `example/`: Example code
 - `MajulaNodeFromYaml.go`: Node startup entry
+- `MajulaNodeTemplate.yaml`: Node config template (now supports both TCP and KCP channels)
 - `MajulaNode1.yaml`/`MajulaNode2.yaml`: Node config samples
 
 ---

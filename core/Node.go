@@ -5,7 +5,6 @@ import (
 	"Majula/common"
 	"container/heap"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -311,7 +310,7 @@ func (node *Node) serializeLinkSet() string {
 			}
 		}
 	}
-	data, err := json.Marshal(filteredLinkSet)
+	data, err := common.MarshalAny(filteredLinkSet)
 	if err != nil {
 		log.Printf("Failed to serialize LinkSet: %v", err)
 		return ""
@@ -324,7 +323,7 @@ func (node *Node) serializeLinkSet() string {
 // 返回：LinkSetType对象。
 func deserializeLinkSet(linkSetStr string) LinkSetType {
 	var linkSet LinkSetType
-	err := json.Unmarshal([]byte(linkSetStr), &linkSet)
+	err := common.UnmarshalAny([]byte(linkSetStr), &linkSet)
 	if err != nil {
 		log.Printf("Failed to deserialize LinkSet: %v", err)
 		return nil
@@ -743,7 +742,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 
 		case P2PMessage:
 			var payload map[string]interface{}
-			err := json.Unmarshal([]byte(msg.Data), &payload)
+			err := common.UnmarshalAny([]byte(msg.Data), &payload)
 			if err != nil {
 				node.DebugPrint("onRecv-p2pMessage", "parseError")
 				return
@@ -1223,7 +1222,7 @@ func (node *Node) floodAllSubscriptions() {
 		NodeID: node.ID,
 		Topics: topics,
 	}
-	dataBytes, _ := json.Marshal(subInfo)
+	dataBytes, _ := common.MarshalAny(subInfo)
 
 	msg := &Message{
 		MessageData: MessageData{
@@ -1246,7 +1245,7 @@ func (node *Node) floodAllSubscriptions() {
 // 参数：msg - Flood消息。
 func (node *Node) handleSubscribeFlood(msg *Message) {
 	var info SubscriptionInfo
-	err := json.Unmarshal([]byte(msg.MessageData.Data), &info)
+	err := common.UnmarshalAny([]byte(msg.MessageData.Data), &info)
 	if err != nil {
 		node.DebugPrint("handleSubscribeFlood", "invalid payload")
 		return
