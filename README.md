@@ -1,6 +1,10 @@
-# Majula Distributed Communication Middleware
+# Majula Distributed Communication Middleware (MDCM V1.0)
 
-Majula is a lightweight, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios.
+Majula is a lightweight, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios. 
+
+The name Majula comes from Dark Souls II. It represents the Firelink Shrine in that game and probably the warmest place in the Souls series. People meet in adventures and come togather around the Firelink Shrine. I hope my middleware can help connect people as well — or more likely, the devices.
+
+Moreover, super excited to roll out v1.0. It is a version that the basic functionalities inside my mind come to place and could work through simple tests, More debugs and improvements on the way.
 
 ---
 
@@ -37,6 +41,7 @@ go mod tidy
 nohup go run MajulaNodeFromYaml.go MajulaNode1.yaml &
 nohup go run MajulaNodeFromYaml.go MajulaNode2.yaml &
 ```
+This will start two connected nodes on local.
 > You can customize node configuration via `MajulaNodeTemplate.yaml`.
 
 ### Channel Protocol Configuration (TCP/KCP)
@@ -101,7 +106,7 @@ curl -X POST http://localhost:8080/majula/rpc -d '{"fun":"add","args":{"a":1,"b"
 
 ---
 
-## 🔗 WebSocket API (Recommended)
+## 🔗 WebSocket API
 
 ### Connection
 ```
