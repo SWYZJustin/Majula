@@ -981,7 +981,7 @@ func TestKcpDynamicTunnel(t *testing.T) {
 	clientB := NewNode("clientB")
 
 	//t.Logf("[TEST] Creating serverWorker (KCP) on %s", netConnectionAddr)
-	serverWorker := NewKCPChannelWorker("server", false, netConnectionAddr, "", nil,
+	serverWorker := NewKcpConnection("server", false, netConnectionAddr, "", nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
 		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
 	serverChannel := NewChannelFull("serverChan", serverNode, serverWorker)
@@ -991,7 +991,7 @@ func TestKcpDynamicTunnel(t *testing.T) {
 	//t.Logf("[TEST] serverNode registered")
 
 	//t.Logf("[TEST] Creating clientAWorker (KCP) connect to %s", netConnectionAddr)
-	clientAWorker := NewKCPChannelWorker("clientA", true, "", netConnectionAddr, nil,
+	clientAWorker := NewKcpConnection("clientA", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
 		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
 	clientAChannel := NewChannelFull("chanA", clientA, clientAWorker)
@@ -1001,7 +1001,7 @@ func TestKcpDynamicTunnel(t *testing.T) {
 	//t.Logf("[TEST] clientA registered")
 
 	//t.Logf("[TEST] Creating clientBWorker (KCP) connect to %s", netConnectionAddr)
-	clientBWorker := NewKCPChannelWorker("clientB", true, "", netConnectionAddr, nil,
+	clientBWorker := NewKcpConnection("clientB", true, "", netConnectionAddr, nil,
 		defaultMaxFrameSize, defaultMaxInactiveSeconds,
 		defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
 	clientBChannel := NewChannelFull("chanB", clientB, clientBWorker)

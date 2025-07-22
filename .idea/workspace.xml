@@ -5,20 +5,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/common/Marshal.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/MajulaNodeFromYaml.go" beforeDir="false" afterPath="$PROJECT_DIR$/MajulaNodeFromYaml.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/MajulaNodeTemplate.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/MajulaNodeTemplate.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Channel.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Channel.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/FRPStreamStub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStreamStub.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/FRPStubManager.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStubManager.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/MajulaServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/MajulaServer.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/KCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/KCPChannelWorker.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RPC.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/TCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TCPChannelWorker.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Tools.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Tools.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

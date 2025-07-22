@@ -3,12 +3,17 @@ package core
 import (
 	"Majula/common"
 	"fmt"
+	"math/rand"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/xtaci/kcp-go"
 	"golang.org/x/time/rate"
 )
+
+const kcpAESKey = "majulakcpsecret!!"
 
 // KcpLink 表示一个基于KCP的连接，封装了会话、写队列和连接状态等信息。
 type KcpLink struct {
@@ -32,8 +37,8 @@ func (this *KcpLink) Close() bool {
 	return true
 }
 
-// KCPChannelWorker 负责管理所有KCP连接，处理连接的注册、注销、消息收发、清理等。
-type KCPChannelWorker struct {
+// KcpChannelWorker 负责管理所有KCP连接，处理连接的注册、注销、消息收发、清理等。
+type KcpChannelWorker struct {
 	Name                   string
 	Listener               *kcp.Listener
 	LinksAddrFromPeer      map[string][]string
@@ -55,11 +60,11 @@ type KCPChannelWorker struct {
 }
 
 // getID 返回当前KCPChannelWorker的唯一标识。
-func (CWorker *KCPChannelWorker) getID() string {
+func (CWorker *KcpChannelWorker) getID() string {
 	return CWorker.Name
 }
 
-// NewKCPChannelWorker 创建一个新的KCPChannelWorker实例。
+// NewKcpConnection 创建一个新的KCPChannelWorker实例。
 // 参数：
 //
 //	name - worker名称
@@ -71,9 +76,9 @@ func (CWorker *KCPChannelWorker) getID() string {
 //	maxSendQueueSize - 发送队列最大长度
 //	maxConnectionPerSeconds - 每秒最大连接数
 //
-// 返回：*KCPChannelWorker 实例
-func NewKCPChannelWorker(name string, isClient bool, localAddr string, remoteAddr string,
-	ipWhitelist []string, maxFrameSize int, maxInactiveDlt int64, maxSendQueueSize int, maxConnectionPerSeconds int, token string) *KCPChannelWorker {
+// 返回：*KcpChannelWorker 实例
+func NewKcpConnection(name string, isClient bool, localAddr string, remoteAddr string,
+	ipWhitelist []string, maxFrameSize int, maxInactiveDlt int64, maxSendQueueSize int, maxConnectionPerSeconds int, token string) *KcpChannelWorker {
 
 	var listener *kcp.Listener
 	var err error
@@ -83,7 +88,7 @@ func NewKCPChannelWorker(name string, isClient bool, localAddr string, remoteAdd
 			return nil
 		}
 	}
-	ret := &KCPChannelWorker{
+	ret := &KcpChannelWorker{
 		Name:                   name,
 		MaxFrameSize:           uint32(maxFrameSize),
 		LinksAddrFromPeer:      map[string][]string{},
@@ -111,7 +116,7 @@ func NewKCPChannelWorker(name string, isClient bool, localAddr string, remoteAdd
 }
 
 // AcceptThread 监听并接受新的KCP连接，超出速率限制的连接会被拒绝。
-func (this *KCPChannelWorker) AcceptThread() {
+func (this *KcpChannelWorker) AcceptThread() {
 	var acceptlimiter = rate.NewLimiter(rate.Limit(this.MaxConnectionPerSecond), this.MaxConnectionPerSecond*2)
 	for !this.IsClosed {
 		sess, err := this.Listener.AcceptKCP()
@@ -163,7 +168,7 @@ func (this *KCPChannelWorker) AcceptThread() {
 // wrapToDataFrame 将数据分帧封装，便于KCP传输。
 // 参数：data - 原始数据
 // 返回：分帧后的字节流
-func (w *KCPChannelWorker) wrapToDataFrame(data []byte) []byte {
+func (w *KcpChannelWorker) wrapToDataFrame(data []byte) []byte {
 	maxDataSize := int(w.MaxFrameSize) - 4
 	n := len(data)
 	estimatedFrameCount := (n + maxDataSize - 1) / maxDataSize
@@ -190,7 +195,7 @@ func (w *KCPChannelWorker) wrapToDataFrame(data []byte) []byte {
 // RegisterKcpLink 注册一个新的KCP连接，并启动写线程。
 // 参数：sess - KCP会话，accepted - 是否为被动接受
 // 返回：*KcpLink 新建的连接对象
-func (this *KCPChannelWorker) RegisterKcpLink(sess *kcp.UDPSession, accepted bool) *KcpLink {
+func (this *KcpChannelWorker) RegisterKcpLink(sess *kcp.UDPSession, accepted bool) *KcpLink {
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
 	//fmt.Printf("[KCP RegisterKcpLink] Register %s, accepted=%v\n", sess.RemoteAddr().String(), accepted)
@@ -214,7 +219,7 @@ func (this *KCPChannelWorker) RegisterKcpLink(sess *kcp.UDPSession, accepted boo
 
 // UnregisterKcpLink 注销并关闭指定的KCP连接。
 // 参数：sess - KCP会话
-func (this *KCPChannelWorker) UnregisterKcpLink(sess *kcp.UDPSession) {
+func (this *KcpChannelWorker) UnregisterKcpLink(sess *kcp.UDPSession) {
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
 	//fmt.Printf("[KCP UnregisterKcpLink] Unregister %s\n", sess.RemoteAddr().String())
@@ -226,7 +231,7 @@ func (this *KCPChannelWorker) UnregisterKcpLink(sess *kcp.UDPSession) {
 
 // TouchKcpLink 更新指定KCP连接的活跃时间。
 // 参数：sess - KCP会话
-func (this *KCPChannelWorker) TouchKcpLink(sess *kcp.UDPSession) {
+func (this *KcpChannelWorker) TouchKcpLink(sess *kcp.UDPSession) {
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
 	this.KcpLinkLastActiveTimes[sess.RemoteAddr().String()] = time.Now().Unix()
@@ -234,7 +239,7 @@ func (this *KCPChannelWorker) TouchKcpLink(sess *kcp.UDPSession) {
 
 // ReadThread 负责从KCP连接读取数据包并分帧，推送到接收队列。
 // 参数：sess - KCP会话，accepted - 是否为被动接受
-func (this *KCPChannelWorker) ReadThread(sess *kcp.UDPSession, accepted bool) {
+func (this *KcpChannelWorker) ReadThread(sess *kcp.UDPSession, accepted bool) {
 	//fmt.Printf("[KCP ReadThread] Start for %s, accepted=%v\n", sess.RemoteAddr().String(), accepted)
 	link := this.RegisterKcpLink(sess, accepted)
 	defer func() {
@@ -287,17 +292,25 @@ func (this *KCPChannelWorker) ReadThread(sess *kcp.UDPSession, accepted bool) {
 
 // 尝试发送注册消息。
 // 参数：link - KCP连接。
-func (this *KCPChannelWorker) trySendRegisterMessage(link *KcpLink) {
+func (this *KcpChannelWorker) trySendRegisterMessage(link *KcpLink) {
 	if this.User == nil || link.HasSendRegister {
 		return
 	}
 	link.HasSendRegister = true
+
+	nodeID := this.User.getID()
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	nonce := strconv.FormatInt(rand.Int63(), 10)
+	dataToSign := nodeID + "|" + timestamp + "|" + nonce
+	signature := HMACMD5Sign(dataToSign, this.Token)
+	dataField := nodeID + "|" + timestamp + "|" + nonce + "|" + signature
+
 	RegisterMsg := Message{
 		MessageData: MessageData{
-			Type: TcpRegister, // 沿用TcpRegister类型
-			Data: HashIDWithToken(this.User.getID(), this.Token),
+			Type: TcpRegister,
+			Data: dataField,
 		},
-		From: this.User.getID(),
+		From: nodeID,
 		To:   "",
 	}
 	sentItem, err := common.MarshalAny(RegisterMsg)
@@ -377,7 +390,7 @@ func writeAllKCP(sess *kcp.UDPSession, ba []byte) {
 
 // DeleteInactiveKcpLink 清理不活跃或未注册的KCP连接。
 // 返回值：被清理的KCP会话列表
-func (this *KCPChannelWorker) DeleteInactiveKcpLink() []*kcp.UDPSession {
+func (this *KcpChannelWorker) DeleteInactiveKcpLink() []*kcp.UDPSession {
 	ret := []*kcp.UDPSession{}
 	now := time.Now().Unix()
 	inactiveKeys := []string{}
@@ -406,7 +419,7 @@ func (this *KCPChannelWorker) DeleteInactiveKcpLink() []*kcp.UDPSession {
 
 // ConnectThread 客户端模式下，负责主动连接远端KCP服务端，并自动重连。
 // 参数：remoteAddr - 远端地址
-func (this *KCPChannelWorker) ConnectThread(remoteAddr string) {
+func (this *KcpChannelWorker) ConnectThread(remoteAddr string) {
 	connectFailureCount := 0
 	for !this.IsClosed {
 		this.MutexForKcpLinks.RLock()
@@ -449,7 +462,7 @@ func (this *KCPChannelWorker) ConnectThread(remoteAddr string) {
 }
 
 // StartCleanupThread 定期清理不活跃的KCP连接。
-func (this *KCPChannelWorker) StartCleanupThread() {
+func (this *KcpChannelWorker) StartCleanupThread() {
 	for {
 		select {
 		case <-this.Done:
@@ -463,7 +476,7 @@ func (this *KCPChannelWorker) StartCleanupThread() {
 }
 
 // StartMessageProcessor 启动消息处理主循环，将接收到的包分发给业务层。
-func (this *KCPChannelWorker) StartMessageProcessor() {
+func (this *KcpChannelWorker) StartMessageProcessor() {
 	for {
 		select {
 		case <-this.Done:
@@ -476,7 +489,7 @@ func (this *KCPChannelWorker) StartMessageProcessor() {
 
 // processPackage 处理收到的IpPackage，反序列化为Message并分发。
 // 参数：pkg - 接收到的包
-func (this *KCPChannelWorker) processPackage(pkg IpPackage) {
+func (this *KcpChannelWorker) processPackage(pkg IpPackage) {
 	pra := pkg.RemoteAddr
 	if len(pkg.Data) > 0 {
 		var msg Message
@@ -498,7 +511,7 @@ func (this *KCPChannelWorker) processPackage(pkg IpPackage) {
 // checkHash 校验消息哈希。
 // 参数：msg - 消息
 // 返回值：校验结果
-func (this *KCPChannelWorker) checkHash(msg *Message) bool {
+func (this *KcpChannelWorker) checkHash(msg *Message) bool {
 	HashValue := msg.Data
 	selfCalculatedHash := HashIDWithToken(msg.From, this.Token)
 	result := selfCalculatedHash == HashValue
@@ -508,11 +521,33 @@ func (this *KCPChannelWorker) checkHash(msg *Message) bool {
 
 // handleRegisterMessage 处理注册消息，标记连接已注册。
 // 参数：pra - 远端地址，msg - 消息
-func (this *KCPChannelWorker) handleRegisterMessage(pra string, msg *Message) {
+func (this *KcpChannelWorker) handleRegisterMessage(pra string, msg *Message) {
+	if msg.Type != TcpRegister {
+		// 其他类型按原逻辑处理
+		return
+	}
+	parts := strings.Split(msg.MessageData.Data, "|")
+	if len(parts) != 4 {
+		if link, ok := this.KcpLinks[pra]; ok && link != nil {
+			link.Close()
+		}
+		return
+	}
+	nodeID := parts[0]
+	timestamp := parts[1]
+	nonce := parts[2]
+	signature := parts[3]
+	dataToSign := nodeID + "|" + timestamp + "|" + nonce
+	if !HMACMD5Verify(dataToSign, this.Token, signature) {
+		if link, ok := this.KcpLinks[pra]; ok && link != nil {
+			link.Close()
+		}
+		return
+	}
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
 	//fmt.Printf("[KCP handleRegisterMessage] Received register from %s, hash ok: %v\n", msg.From, this.checkHash(msg))
-	if this.checkHash(msg) != true || msg.From == this.User.getID() {
+	if msg.From == this.User.getID() {
 		if link, ok := this.KcpLinks[pra]; ok && link != nil {
 			//fmt.Printf("[KCP handleRegisterMessage] Close link %s due to hash or self\n", pra)
 			link.Close()
@@ -527,7 +562,7 @@ func (this *KCPChannelWorker) handleRegisterMessage(pra string, msg *Message) {
 
 // handleNormalMessage 处理普通消息，更新路由表并分发给业务层。
 // 参数：pra - 远端地址，msg - 消息
-func (this *KCPChannelWorker) handleNormalMessage(pra string, msg *Message) {
+func (this *KcpChannelWorker) handleNormalMessage(pra string, msg *Message) {
 	peerId := msg.LastSender
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
@@ -555,7 +590,7 @@ func (this *KCPChannelWorker) handleNormalMessage(pra string, msg *Message) {
 
 // Close 关闭KCPChannelWorker，释放所有资源。
 // 返回值：错误信息（如有）
-func (this *KCPChannelWorker) Close() error {
+func (this *KcpChannelWorker) Close() error {
 	this.IsClosed = true
 	close(this.Done)
 	if this.Listener != nil {
@@ -570,7 +605,7 @@ func (this *KCPChannelWorker) Close() error {
 
 // DeleteInactiveKcpLinkForce 强制清理所有KCP连接。
 // 返回值：被清理的KCP会话列表
-func (this *KCPChannelWorker) DeleteInactiveKcpLinkForce() []*kcp.UDPSession {
+func (this *KcpChannelWorker) DeleteInactiveKcpLinkForce() []*kcp.UDPSession {
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
 	ret := []*kcp.UDPSession{}
@@ -584,7 +619,7 @@ func (this *KCPChannelWorker) DeleteInactiveKcpLinkForce() []*kcp.UDPSession {
 
 // sendTo 向指定节点发送消息。
 // 参数：nextHopNodeId - 目标节点ID，msg - 消息
-func (this *KCPChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
+func (this *KcpChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
 	if msg == nil {
 		return
 	}
@@ -611,7 +646,7 @@ func (this *KCPChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
 
 // broadCast 向所有已注册的KCP连接广播消息。
 // 参数：msg - 消息
-func (this *KCPChannelWorker) broadCast(msg *Message) {
+func (this *KcpChannelWorker) broadCast(msg *Message) {
 	if msg == nil {
 		return
 	}
@@ -634,7 +669,7 @@ func (this *KCPChannelWorker) broadCast(msg *Message) {
 
 // GetAllConns 获取所有当前活跃的KcpLink。
 // 返回值：KcpLink列表
-func (this *KCPChannelWorker) GetAllConns() []*KcpLink {
+func (this *KcpChannelWorker) GetAllConns() []*KcpLink {
 	ret := []*KcpLink{}
 	this.MutexForKcpLinks.RLock()
 	defer this.MutexForKcpLinks.RUnlock()

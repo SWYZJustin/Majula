@@ -1,6 +1,8 @@
 package core
 
 import (
+	"crypto/hmac"
+	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -109,6 +111,19 @@ func HashIDWithToken(id string, token string) string {
 func VerifyHash(id string, token string, storedHash string) bool {
 	newHash := HashIDWithToken(id, token)
 	return newHash == storedHash
+}
+
+// HMACMD5Sign 生成HMAC-MD5签名，返回hex字符串
+func HMACMD5Sign(data, token string) string {
+	mac := hmac.New(md5.New, []byte(token))
+	mac.Write([]byte(data))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// HMACMD5Verify 验证HMAC-MD5签名
+func HMACMD5Verify(data, token, sig string) bool {
+	expected := HMACMD5Sign(data, token)
+	return hmac.Equal([]byte(expected), []byte(sig))
 }
 
 func getString(args map[string]interface{}, key, def string) string {

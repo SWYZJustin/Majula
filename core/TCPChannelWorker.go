@@ -5,7 +5,9 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
+	"math/rand"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -375,12 +377,19 @@ func (this *TcpChannelWorker) trySendRegisterMessage(link *TcpLink) {
 
 	link.HasSendRegister = true
 
+	nodeID := this.User.getID()
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	nonce := strconv.FormatInt(rand.Int63(), 10)
+	dataToSign := nodeID + "|" + timestamp + "|" + nonce
+	signature := HMACMD5Sign(dataToSign, this.Token)
+	dataField := nodeID + "|" + timestamp + "|" + nonce + "|" + signature
+
 	RegisterMsg := Message{
 		MessageData: MessageData{
 			Type: TcpRegister,
-			Data: HashIDWithToken(this.User.getID(), this.Token),
+			Data: dataField,
 		},
-		From: this.User.getID(),
+		From: nodeID,
 		To:   "",
 	}
 
@@ -674,11 +683,33 @@ func (this *TcpChannelWorker) checkHash(msg *Message) bool {
 // 处理注册消息。
 // 参数：pra - 地址，msg - 消息。
 func (this *TcpChannelWorker) handleRegisterMessage(pra string, msg *Message) {
+	if msg.Type != TcpRegister {
+		// 其他类型按原逻辑处理
+		return
+	}
+	parts := strings.Split(msg.MessageData.Data, "|")
+	if len(parts) != 4 {
+		if link, ok := this.TcpLinks[pra]; ok && link != nil {
+			link.Close()
+		}
+		return
+	}
+	nodeID := parts[0]
+	timestamp := parts[1]
+	nonce := parts[2]
+	signature := parts[3]
+	dataToSign := nodeID + "|" + timestamp + "|" + nonce
+	if !HMACMD5Verify(dataToSign, this.Token, signature) {
+		if link, ok := this.TcpLinks[pra]; ok && link != nil {
+			link.Close()
+		}
+		return
+	}
+
 	this.MutexForTcpLinks.Lock()
 	defer this.MutexForTcpLinks.Unlock()
 
-	// 检查msg的hash以及来源
-	if this.checkHash(msg) != true || msg.From == this.User.getID() {
+	if msg.From == this.User.getID() {
 		if link, ok := this.TcpLinks[pra]; ok && link != nil {
 			link.Close()
 		}
@@ -687,7 +718,6 @@ func (this *TcpChannelWorker) handleRegisterMessage(pra string, msg *Message) {
 
 	// 检测是否连接以及存储
 	if link, ok := this.TcpLinks[pra]; ok && link != nil {
-
 		// 如果有tsl，检测tsl是否正确
 		if _, ok := link.TlsServerName[msg.From]; !ok && len(link.TlsServerName) > 0 {
 			link.Close()

@@ -151,7 +151,7 @@ func main() {
 		if ch.Protocol == "kcp" {
 			// KCP通道
 			if ch.Type == "server" {
-				worker := core.NewKCPChannelWorker(
+				worker := core.NewKcpConnection(
 					"_server_"+ch.ListenAddr, false, ch.ListenAddr, "", ch.KCP.IPWhitelist,
 					ch.KCP.FrameSize, ch.KCP.InactiveSeconds, ch.KCP.SendQueueSize, ch.KCP.MaxConnectionsPerSec, conf.Token,
 				)
@@ -162,7 +162,7 @@ func main() {
 				worker.User = channel
 				node.AddChannel(channel)
 			} else if ch.Type == "client" {
-				worker := core.NewKCPChannelWorker(
+				worker := core.NewKcpConnection(
 					"_client_"+ch.RemoteAddr, true, "", ch.RemoteAddr, ch.KCP.IPWhitelist,
 					ch.KCP.FrameSize, ch.KCP.InactiveSeconds, ch.KCP.SendQueueSize, ch.KCP.MaxConnectionsPerSec, conf.Token,
 				)
