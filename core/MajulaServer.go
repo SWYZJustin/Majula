@@ -42,7 +42,7 @@ func (s *Server) nextLocalInvokeId() int64 {
 	return atomic.AddInt64(&s.rpcInvokeCounter, 1)
 }
 
-// Server结构体，Majula服务端，管理所有客户端连接和RPC。
+// Server Majula服务端，管理所有客户端连接和RPC。
 type Server struct {
 	Clients          map[string]*ClientConnection
 	Node             *Node
@@ -92,6 +92,8 @@ func SetupRoutes(server *Server) *gin.Engine {
 	registerDualMethod(rg, "/frp", server.handleFrp, false)
 	registerDualMethod(rg, "/upload", server.handleFileUpload, false)
 	registerDualMethod(rg, "/download", server.handleFileDownload, false)
+	registerDualMethod(rg, "/join_raft_learner", server.handleJoinRaftLearner, false)
+	registerDualMethod(rg, "/leave_raft_learner", server.handleLeaveRaftLearner, false)
 	return r
 }
 
@@ -634,9 +636,35 @@ func (s *Server) handlePackage(client *ClientConnection, pkg api.MajulaPackage) 
 	case "DOWNLOAD_FILE":
 		go s.handleDownloadFileFromRemotePackage(client, pkg)
 
+	case "JOIN_RAFT_LEARNER":
+		go s.handleJoinRaftLearnerPackage(client, pkg)
+	case "LEAVE_RAFT_LEARNER":
+		go s.handleLeaveRaftLearnerPackage(client, pkg)
+
 	default:
 
 	}
+}
+
+// handleJoinRaftLearnerPackage 处理客户端请求以 learner 形式加入 raft group
+// 参数：client - 客户端连接，pkg - 指令包
+func (s *Server) handleJoinRaftLearnerPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	group, _ := pkg.Args["group"].(string)
+	dbPath, _ := pkg.Args["dbpath"].(string)
+	if group == "" || dbPath == "" {
+		return
+	}
+	s.Node.RaftManager.JoinAsLearner(group, s.Node, dbPath)
+}
+
+// handleLeaveRaftLearnerPackage 处理客户端请求以 learner 形式退出 raft group
+// 参数：client - 客户端连接，pkg - 指令包
+func (s *Server) handleLeaveRaftLearnerPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	group, _ := pkg.Args["group"].(string)
+	if group == "" {
+		return
+	}
+	s.Node.RaftManager.LeaveAsLearner(group, s.Node)
 }
 
 // 向指定客户端发送消息。
@@ -1035,7 +1063,7 @@ func (s *Server) handleSend(c *gin.Context) {
 		"target_client": targetClient,
 		"payload":       msg,
 	}
-	
+
 	dataBytes, _ := common.MarshalAny(payload)
 
 	message := &Message{
@@ -1269,4 +1297,35 @@ func (s *Server) handleFileDownload(c *gin.Context) {
 		"remote_path": remotePath,
 		"local_path":  localPath,
 	})
+}
+
+func (s *Server) handleJoinRaftLearner(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	group, _ := params["group"].(string)
+	dbPath, _ := params["dbpath"].(string)
+	if group == "" || dbPath == "" {
+		c.JSON(400, gin.H{"error": "group 和 dbpath 不能为空"})
+		return
+	}
+	err := s.Node.RaftManager.JoinAsLearner(group, s.Node, dbPath)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"status": "ok", "group": group, "dbpath": dbPath})
+}
+
+func (s *Server) handleLeaveRaftLearner(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	group, _ := params["group"].(string)
+	if group == "" {
+		c.JSON(400, gin.H{"error": "group 不能为空"})
+		return
+	}
+	err := s.Node.RaftManager.LeaveAsLearner(group, s.Node)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"status": "ok", "group": group})
 }

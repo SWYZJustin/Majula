@@ -39,6 +39,7 @@ type RpcMeta struct {
 	Note       string              `json:"note,omitempty"`
 }
 
+// MajulaClient 封装底层通信、RPC、订阅、FRP、Nginx、文件等功能
 type MajulaClient struct {
 	Addr      string
 	Entity    string
@@ -592,4 +593,29 @@ func (c *MajulaClient) DownloadFileFromRemote(remoteNode, remotePath, localPath 
 			"local_path":  localPath,
 		},
 	})
+}
+
+// 加入本地 learner
+// 参数：group - raft group 名称，dbPath - learner 本地存储路径
+func (c *MajulaClient) JoinRaftGroupAsLearner(group string, dbPath string) {
+	pkg := MajulaPackage{
+		Method: "JOIN_RAFT_LEARNER",
+		Args: map[string]interface{}{
+			"group":  group,
+			"dbpath": dbPath,
+		},
+	}
+	c.Send(pkg)
+}
+
+// 退出本地 learner
+// 参数：group - raft group 名称
+func (c *MajulaClient) LeaveRaftGroupAsLearner(group string) {
+	pkg := MajulaPackage{
+		Method: "LEAVE_RAFT_LEARNER",
+		Args: map[string]interface{}{
+			"group": group,
+		},
+	}
+	c.Send(pkg)
 }

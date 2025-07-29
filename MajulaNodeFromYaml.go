@@ -46,11 +46,18 @@ type MajulaServerConfigYaml struct {
 	Port int `yaml:"port"`
 }
 
+type RaftConfigYaml struct {
+	Group  string   `yaml:"group"`
+	Peers  []string `yaml:"peers"`
+	DBPath string   `yaml:"dbpath"`
+}
+
 type NodeConfigYaml struct {
 	NodeID        string                   `yaml:"node_id"`
 	Token         string                   `yaml:"token"`
 	MajulaServers []MajulaServerConfigYaml `yaml:"majula_servers"`
 	Channels      []ChannelConfigYaml      `yaml:"channels"`
+	Raft          []RaftConfigYaml         `yaml:"raft"`
 }
 
 func buildTLSConfig(tlsConf *TLSConfigYaml) (*tls.Config, error) {
@@ -114,6 +121,19 @@ func validateConfig(conf *NodeConfigYaml) error {
 			}
 		}
 	}
+	if len(conf.Raft) > 0 {
+		for i, raftConf := range conf.Raft {
+			if raftConf.Group == "" {
+				return fmt.Errorf("raft[%d].group 不能为空", i)
+			}
+			if len(raftConf.Peers) == 0 {
+				return fmt.Errorf("raft[%d].peers 至少要有一个", i)
+			}
+			if raftConf.DBPath == "" {
+				return fmt.Errorf("raft[%d].dbpath 不能为空", i)
+			}
+		}
+	}
 	return nil
 }
 
@@ -139,6 +159,17 @@ func main() {
 	fmt.Printf("加载配置: %+v\n", conf)
 
 	node := core.NewNode(conf.NodeID)
+
+	// Raft集群初始化
+	if len(conf.Raft) > 0 {
+		for _, raftConf := range conf.Raft {
+			_, err := node.RaftManager.CreateRaftGroup(raftConf.Group, node, raftConf.Peers, raftConf.DBPath)
+			if err != nil {
+				log.Fatalf("Raft集群 %s 初始化失败: %v", raftConf.Group, err)
+			}
+			fmt.Printf("Raft集群 %s 初始化完成，核心节点: %v，dbpath: %s\n", raftConf.Group, raftConf.Peers, raftConf.DBPath)
+		}
+	}
 
 	for _, ms := range conf.MajulaServers {
 		go func(port int) {

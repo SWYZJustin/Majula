@@ -28,6 +28,12 @@ const (
 	FRPAck
 	FRPClose
 	FRPResendRequest
+	RaftTopicInit
+	RaftTopicExit
+	RaftTopicPublish
+	RaftTopicSubscribeFlood
+	RaftMessage
+	RaftLearnerJoin
 )
 
 func checkBroadCast(pType MessageType) bool {

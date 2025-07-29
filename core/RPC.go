@@ -554,4 +554,78 @@ func (node *Node) RegisterDefaultRPCs() {
 		return funcs
 	})
 
+	node.registerRpcService("addLearner", "raft", RPC_FuncInfo{
+		Note: "Add a learner to a Raft group",
+	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		group, ok := params["group"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing group"}
+		}
+		learnerID, ok := params["learner_id"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing learner_id"}
+		}
+
+		node.RaftManager.RaftStubsMutex.RLock()
+		raftClient, exists := node.RaftManager.RaftStubs[group]
+		node.RaftManager.RaftStubsMutex.RUnlock()
+		if !exists {
+			return map[string]interface{}{"error": fmt.Sprintf("raft group %s not found", group)}
+		}
+
+		raftClient.Mutex.Lock()
+		defer raftClient.Mutex.Unlock()
+		if raftClient.Role != Leader {
+			return map[string]interface{}{
+				"success":     false,
+				"redirect_to": raftClient.LeaderHint,
+				"message":     "not leader",
+			}
+		}
+
+		raftClient.AddLearner(learnerID)
+
+		return map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("learner %s added to group %s", learnerID, group),
+		}
+	})
+	
+	node.registerRpcService("removeLearner", "raft", RPC_FuncInfo{
+		Note: "Remove a learner from a Raft group",
+	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		group, ok := params["group"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing group"}
+		}
+		learnerID, ok := params["learner_id"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing learner_id"}
+		}
+
+		node.RaftManager.RaftStubsMutex.RLock()
+		raftClient, exists := node.RaftManager.RaftStubs[group]
+		node.RaftManager.RaftStubsMutex.RUnlock()
+		if !exists {
+			return map[string]interface{}{"error": fmt.Sprintf("raft group %s not found", group)}
+		}
+
+		raftClient.Mutex.Lock()
+		defer raftClient.Mutex.Unlock()
+		if raftClient.Role != Leader {
+			return map[string]interface{}{
+				"success":     false,
+				"redirect_to": raftClient.LeaderHint,
+				"message":     "not leader",
+			}
+		}
+
+		raftClient.RemoveLearner(learnerID)
+
+		return map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("learner %s removed from group %s", learnerID, group),
+		}
+	})
+
 }

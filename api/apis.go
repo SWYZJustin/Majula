@@ -2,8 +2,7 @@ package api
 
 import "time"
 
-// Client 是用户主要交互的 API 接口。
-// 封装了底层 MajulaClient 的所有功能，提供更简洁的使用方式。
+// Client 封装 MajulaClient，提供简洁 API
 type Client struct {
 	inner *MajulaClient
 }
@@ -185,4 +184,16 @@ func (c *Client) DownloadFile(remoteNode, remotePath, localPath string) {
 // Quit 关闭客户端连接，并停止后台协程。
 func (c *Client) Quit() {
 	c.inner.Quit()
+}
+
+// 加入本地 learner
+// 参数：group - raft group 名称，dbPath - learner 本地存储路径
+func (c *Client) JoinRaftGroupAsLearner(group, dbPath string) {
+	c.inner.JoinRaftGroupAsLearner(group, dbPath)
+}
+
+// 退出本地 learner
+// 参数：group - raft group 名称
+func (c *Client) LeaveRaftGroupAsLearner(group string) {
+	c.inner.LeaveRaftGroupAsLearner(group)
 }

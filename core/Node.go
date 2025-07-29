@@ -5,6 +5,7 @@ import (
 	"Majula/common"
 	"container/heap"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -64,6 +65,8 @@ type Node struct { // Node
 
 	HttpProxyStubs      map[string]map[string]*HTTPProxyDefine
 	HttpProxyStubsMutex sync.Mutex
+
+	RaftManager *RaftManager
 }
 
 type SubscriptionInfo struct {
@@ -418,6 +421,7 @@ func NewNodeWithChannel(pID string, pChannels map[string]*Channel) *Node {
 
 		HttpProxyStubs:      make(map[string]map[string]*HTTPProxyDefine),
 		HttpProxyStubsMutex: sync.Mutex{},
+		RaftManager:         NewRaftManager(),
 	}
 	aNode.InitStubManager()
 	return &aNode
@@ -465,6 +469,7 @@ func NewNode(pID string) *Node {
 		WsServersMutex:      sync.RWMutex{},
 		HttpProxyStubs:      make(map[string]map[string]*HTTPProxyDefine),
 		HttpProxyStubsMutex: sync.Mutex{},
+		RaftManager:         NewRaftManager(),
 	}
 	aNode.InitStubManager()
 	return &aNode
@@ -531,6 +536,7 @@ func (node *Node) Register() {
 	go node.RegisterDefaultRPCs()
 	go node.RegisterFRPRPCHandler()
 	go node.RegisterFileTransferRPCs()
+	go node.startRaftSubscriptionFloodLoop()
 }
 
 // Quit 使Node退出，关闭所有服务。
@@ -688,6 +694,10 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 	case RpcServiceFlood:
 		go node.handleRpcServiceFlood(msg)
 		return
+
+	case RaftTopicSubscribeFlood:
+		go node.handleRaftSubscribeFlood(msg)
+		return
 	default:
 	}
 
@@ -730,6 +740,24 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 			}
 			node.MySubsMutex.RUnlock()
 
+		case RaftTopicPublish:
+			topic, payload, ok := parseTopicMessage(msg.MessageData.Data)
+			if !ok {
+				fmt.Println("Invalid raft topic message:", msg.MessageData.Data)
+				break
+			}
+
+			if len(msg.MessageData.BundleTo) > 0 {
+				go node.handleRaftBundle(msg, topic, payload)
+				break
+			}
+
+			node.DebugPrint("raft-topic-msg", fmt.Sprintf("[RaftTopic %s] %s", topic, payload))
+			stub := node.getRaftStub(topic)
+			if stub != nil {
+				go stub.onRaftMessage(topic, msg.From, node.ID, []byte(payload))
+			}
+
 		case RpcRequest:
 			node.DebugPrint("onRecv-rpcRequest", "start")
 			go node.handleRpcRequest(msg)
@@ -770,6 +798,24 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 				}
 			}
 
+		case RaftMessage:
+			content := []byte(msg.MessageData.Data)
+			var payload RaftPayload
+			if err := json.Unmarshal(content, &payload); err != nil {
+				fmt.Println("[Raft] Failed to unmarshal RaftPayload:", err)
+				break
+			}
+			group := payload.Group
+			stub := node.getRaftStub(group)
+			if stub != nil {
+				go stub.onRaftMessage(group, msg.From, node.ID, content)
+				break
+			}
+			lStub := node.getLearnerStub(group)
+			if lStub != nil {
+				go lStub.onRaftMessage(group, msg.From, node.ID, content)
+			}
+			break
 		default:
 			//Node.DebugPrint("onRecv-Message", msg.Data)
 			fmt.Println("Receive message: " + msg.Data)

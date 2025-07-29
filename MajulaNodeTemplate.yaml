@@ -36,3 +36,17 @@ channels:
 #     inactive_seconds: 10
 #     send_queue_size: 1000
 #     max_connections_per_sec: 5
+
+raft:
+  - group: "raft-group-1"
+    peers:
+      - "node1"
+      - "node2"
+      - "node3"
+    dbpath: "./raftdb_group1_node1"
+  - group: "raft-group-2"
+    peers:
+      - "node1"
+      - "node4"
+      - "node5"
+    dbpath: "./raftdb_group2_node1"

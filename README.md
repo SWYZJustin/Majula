@@ -18,14 +18,16 @@ Moreover, super excited to roll out v0.1. It is a version that the basic functio
 - **Dynamic Nginx Reverse Proxy**: Register and expose local services to remote nodes via HTTP mapping.
 - **Extensible Architecture**: Modular, easy to extend and integrate into your own systems.
 - **High-Performance KCP Channel**: Supports KCP-based reliable UDP channels for weak network and high-performance scenarios.
+- **Distributed Consistency (Raft)**: Multi-group Raft consensus, static core cluster, dynamic learners, and flexible group management.
 
 ---
 
 ## 🚧 Planned Features
 
 - **Client Election**: Implement distributed client election to support leader selection and failover scenarios.
-- **Consistency Features**: Add distributed consistency mechanisms (such as consensus protocols, state synchronization, etc.) to ensure data reliability and coordination across nodes.
-- **Network & Other Optimizations**: Further optimize network performance, resource usage, and add more advanced features for scalability and robustness.
+- **Node Auto-Discovery**: Use signaling server + P2P hole punching for automatic node discovery (planned after voting feature).
+- **Advanced Network Optimizations**: Further optimize network performance, resource usage, and add more advanced features for scalability and robustness.
+- **More Extensible Plugins**: Add plugin hooks for custom protocols, storage engines, or monitoring.
 
 ---
 
@@ -202,6 +204,34 @@ client.Quit()
 - **FRP NAT Traversal**: Register/start FRP tunnels via `/majula/frp` or SDK for seamless node-to-node communication.
 - **Nginx Reverse Proxy**: Dynamically register local HTTP services to remote nodes via `/majula/map` or SDK.
 - **File Transfer**: Upload/download files between nodes.
+
+---
+
+## ⚡ Distributed Consistency & Raft Support
+
+- **Multi-Raft Group**: Each group has independent leader election, log replication, and state machine. A single node can participate in multiple groups.
+- **Static Core Cluster + Dynamic Learner**: Core nodes are statically configured in YAML; learner nodes can join/leave at runtime for read-only replicas, data synchronization, and disaster recovery.
+- **Flexible Group Management**: Easily create, join, or remove Raft groups and learners at runtime via API or configuration.
+
+### Example: YAML Raft Configuration
+
+```yaml
+raft:
+  - group: "raft-group-1"
+    peers:
+      - "node1"
+      - "node2"
+      - "node3"
+    dbpath: "./raftdb_group1_node1"
+  - group: "raft-group-2"
+    peers:
+      - "node1"
+      - "node4"
+      - "node5"
+    dbpath: "./raftdb_group2_node1"
+```
+- Multiple groups can be configured per node; each group is independent.
+- `peers` is the list of core node IDs; `dbpath` is the local persistent storage path for each group.
 
 ---
 

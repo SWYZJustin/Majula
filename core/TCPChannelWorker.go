@@ -817,7 +817,7 @@ func (this *TcpChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
 				}
 				go func(ba []byte, link *TcpLink, important bool) {
 					if len(ba) > 0 {
-						//fmt.Println(this.User.getID() + " Write in the sendTo " + msg.Print())
+						//fmt.Println(this.User.getID() + " Write in the sendToTarget " + msg.Print())
 						link.WriteTo(ba, important)
 					}
 				}(ba, link, msg.isImportant())
