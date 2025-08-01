@@ -213,7 +213,7 @@ Majula 实现了 Raft 共识算法，提供强一致性的分布式数据管理�
 - **core/**: 核心逻辑模块，包含节点管理、消息路由、RPC 框架等
 - **api/**: 客户端 SDK 和 API 定义
 - **server/**: 信令服务器实现
-- **example/**: 示例代码和用法演示
+- **example/**: 示例代码和用法演示（老旧版本）
 - **MajulaNodeFromYaml.go**: 节点启动入口程序
 - **SignalingServerFromYaml.go**: 信令服务器启动入口程序
 - **MajulaNodeTemplate.yaml**: 节点配置模板
