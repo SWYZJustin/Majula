@@ -197,3 +197,26 @@ func (c *Client) JoinRaftGroupAsLearner(group, dbPath string) {
 func (c *Client) LeaveRaftGroupAsLearner(group string) {
 	c.inner.LeaveRaftGroupAsLearner(group)
 }
+
+// JoinElection 加入选举组
+func (c *Client) JoinElection(groupName string, baseOvertimeT int64) {
+	if baseOvertimeT == 0 {
+		baseOvertimeT = 3000
+	}
+	c.inner.JoinElection(groupName, baseOvertimeT)
+}
+
+// GiveUpElection 放弃选举（主动放弃值班）
+func (c *Client) GiveUpElection(groupName string) {
+	c.inner.GiveUpElection(groupName)
+}
+
+// LeaveElection 退出选举组
+func (c *Client) LeaveElection(groupName string) {
+	c.inner.LeaveElection(groupName)
+}
+
+// GetElectionStatus 获取选举状态
+func (c *Client) GetElectionStatus(groupName string) {
+	c.inner.GetElectionStatus(groupName)
+}

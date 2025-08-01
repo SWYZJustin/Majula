@@ -1,0 +1,44 @@
+server:
+  name: "Majula Signaling Server"
+  version: "1.0.0"
+  description: "信令服务器，用于节点发现和连接协调"
+
+network:
+  http_port: 8080
+  udp_port: 8081
+  host: "0.0.0.0"
+
+websocket:
+  read_timeout: "60s"
+  write_timeout: "10s"
+  ping_interval: "30s"
+  pong_wait: "60s"
+  max_message_size: 4096
+
+node_management:
+  cleanup_interval: "300s"
+  offline_timeout: "600s"
+  max_nodes: 1000
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  file_path: ""
+
+security:
+  enable_cors: true
+  allowed_origins:
+    - "*"
+  enable_rate_limit: true
+  max_requests_per_minute: 100
+
+monitoring:
+  enable_metrics: true
+  metrics_port: 9090
+  health_check_interval: "30s"
+
+advanced:
+  enable_debug: false
+  enable_profiling: false
+  profile_port: 6060 

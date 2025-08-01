@@ -94,6 +94,10 @@ func SetupRoutes(server *Server) *gin.Engine {
 	registerDualMethod(rg, "/download", server.handleFileDownload, false)
 	registerDualMethod(rg, "/join_raft_learner", server.handleJoinRaftLearner, false)
 	registerDualMethod(rg, "/leave_raft_learner", server.handleLeaveRaftLearner, false)
+	registerDualMethod(rg, "/elect/join", server.handleElectJoin, false)
+	registerDualMethod(rg, "/elect/giveup", server.handleElectGiveUp, false)
+	registerDualMethod(rg, "/elect/leave", server.handleElectLeave, false)
+	registerDualMethod(rg, "/elect/status", server.handleElectStatus, false)
 	return r
 }
 
@@ -640,6 +644,15 @@ func (s *Server) handlePackage(client *ClientConnection, pkg api.MajulaPackage) 
 		go s.handleJoinRaftLearnerPackage(client, pkg)
 	case "LEAVE_RAFT_LEARNER":
 		go s.handleLeaveRaftLearnerPackage(client, pkg)
+
+	case "JOIN_ELECTION":
+		go s.handleJoinElectionPackage(client, pkg)
+	case "GIVEUP_ELECTION":
+		go s.handleGiveUpElectionPackage(client, pkg)
+	case "LEAVE_ELECTION":
+		go s.handleLeaveElectionPackage(client, pkg)
+	case "GET_ELECTION_STATUS":
+		go s.handleGetElectionStatusPackage(client, pkg)
 
 	default:
 
@@ -1328,4 +1341,198 @@ func (s *Server) handleLeaveRaftLearner(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"status": "ok", "group": group})
+}
+
+// 处理加入选举请求
+func (s *Server) handleElectJoin(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	groupName, _ := params["group"].(string)
+	baseOvertimeT, _ := params["base_overtime_t"].(float64)
+
+	if groupName == "" {
+		c.JSON(400, gin.H{"error": "group 不能为空"})
+		return
+	}
+
+	if baseOvertimeT == 0 {
+		baseOvertimeT = 3000
+	}
+
+	config := ElectConfig{
+		BaseOvertimeT: int64(baseOvertimeT),
+		GroupName:     groupName,
+	}
+
+	candidate, err := s.Node.ElectManager.CreateCandidate(groupName, config)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	err = candidate.Start()
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"status": "ok",
+		"group":  groupName,
+		"config": config,
+	})
+}
+
+// 处理放弃选举请求
+func (s *Server) handleElectGiveUp(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	groupName, _ := params["group"].(string)
+
+	if groupName == "" {
+		c.JSON(400, gin.H{"error": "group 不能为空"})
+		return
+	}
+
+	candidate, exists := s.Node.ElectManager.GetCandidate(groupName)
+	if !exists {
+		c.JSON(404, gin.H{"error": "选举组不存在"})
+		return
+	}
+
+	candidate.GiveUp()
+
+	c.JSON(200, gin.H{
+		"status": "ok",
+		"group":  groupName,
+		"action": "giveup",
+	})
+}
+
+// 处理退出选举请求
+func (s *Server) handleElectLeave(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	groupName, _ := params["group"].(string)
+
+	if groupName == "" {
+		c.JSON(400, gin.H{"error": "group 不能为空"})
+		return
+	}
+
+	err := s.Node.ElectManager.RemoveCandidate(groupName)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"status": "ok",
+		"group":  groupName,
+		"action": "leave",
+	})
+}
+
+// 处理选举状态查询请求
+func (s *Server) handleElectStatus(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	groupName, _ := params["group"].(string)
+
+	if groupName == "" {
+		stats := s.Node.ElectManager.GetStats()
+		c.JSON(200, gin.H{
+			"status": "ok",
+			"stats":  stats,
+		})
+		return
+	}
+
+	candidate, exists := s.Node.ElectManager.GetCandidate(groupName)
+	if !exists {
+		c.JSON(404, gin.H{"error": "选举组不存在"})
+		return
+	}
+
+	stats := candidate.GetStats()
+	c.JSON(200, gin.H{
+		"status": "ok",
+		"group":  groupName,
+		"stats":  stats,
+	})
+}
+
+// handleJoinElectionPackage 处理客户端加入选举的WebSocket包
+func (s *Server) handleJoinElectionPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	groupName, _ := pkg.Args["group"].(string)
+	baseOvertimeT, _ := pkg.Args["base_overtime_t"].(float64)
+
+	if groupName == "" {
+		return
+	}
+
+	if baseOvertimeT == 0 {
+		baseOvertimeT = 3000
+	}
+
+	config := ElectConfig{
+		BaseOvertimeT: int64(baseOvertimeT),
+		GroupName:     groupName,
+	}
+
+	candidate, err := s.Node.ElectManager.CreateCandidate(groupName, config)
+	if err != nil {
+		return
+	}
+
+	err = candidate.Start()
+	if err != nil {
+		return
+	}
+}
+
+// handleGiveUpElectionPackage 处理客户端放弃选举的WebSocket包
+func (s *Server) handleGiveUpElectionPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	groupName, _ := pkg.Args["group"].(string)
+
+	if groupName == "" {
+		return
+	}
+
+	candidate, exists := s.Node.ElectManager.GetCandidate(groupName)
+	if !exists {
+		return
+	}
+
+	candidate.GiveUp()
+}
+
+// handleLeaveElectionPackage 处理客户端退出选举的WebSocket包
+func (s *Server) handleLeaveElectionPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	groupName, _ := pkg.Args["group"].(string)
+
+	if groupName == "" {
+		return
+	}
+
+	s.Node.ElectManager.RemoveCandidate(groupName)
+}
+
+// handleGetElectionStatusPackage 处理客户端获取选举状态的WebSocket包
+func (s *Server) handleGetElectionStatusPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	groupName, _ := pkg.Args["group"].(string)
+
+	var result interface{}
+	if groupName == "" {
+		result = s.Node.ElectManager.GetStats()
+	} else {
+		candidate, exists := s.Node.ElectManager.GetCandidate(groupName)
+		if !exists {
+			return
+		}
+		result = candidate.GetStats()
+	}
+
+	response := api.MajulaPackage{
+		Method:   "ELECTION_STATUS_RESULT",
+		Result:   result,
+		InvokeId: pkg.InvokeId,
+	}
+	s.SendToClient(client.ID, response)
 }

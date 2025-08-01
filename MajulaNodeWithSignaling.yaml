@@ -1,0 +1,40 @@
+# Majula 节点配置模板（启用信令服务器）
+node_id: "node1"
+token: "default_token"
+
+# 信令服务器配置（启用）
+signaling_server:
+  enabled: true  # 启用信令服务器连接
+  url: "ws://localhost:8080/ws"  # 信令服务器WebSocket地址
+  udp_port: 8081  # 信令服务器UDP端口
+  reconnect_interval: "30s"  # 重连间隔
+  heartbeat_interval: "30s"  # 心跳间隔
+
+majula_servers:
+  - port: 18080
+
+channels:
+  - type: "server"
+    protocol: "tcp"
+    listen_addr: "127.0.0.1:29090"
+    tcp:
+      frame_size: 4096
+      inactive_seconds: 10
+      send_queue_size: 1000
+      max_connections_per_sec: 5
+  - type: "server"
+    protocol: "kcp"
+    listen_addr: "127.0.0.1:30090"
+    kcp:
+      frame_size: 4096
+      inactive_seconds: 10
+      send_queue_size: 1000
+      max_connections_per_sec: 5
+
+raft:
+  - group: "raft-group-1"
+    peers:
+      - "node1"
+      - "node2"
+      - "node3"
+    dbpath: "./raftdb_group1_node1" 

@@ -66,7 +66,10 @@ type Node struct { // Node
 	HttpProxyStubs      map[string]map[string]*HTTPProxyDefine
 	HttpProxyStubsMutex sync.Mutex
 
-	RaftManager *RaftManager
+	RaftManager  *RaftManager
+	ElectManager *ElectManager
+
+	SignalingClient *SignalingClient
 }
 
 type SubscriptionInfo struct {
@@ -472,6 +475,7 @@ func NewNode(pID string) *Node {
 		RaftManager:         NewRaftManager(),
 	}
 	aNode.InitStubManager()
+	aNode.ElectManager = NewElectManager(&aNode)
 	return &aNode
 }
 

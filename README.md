@@ -1,256 +1,232 @@
-# Majula Distributed Communication Middleware (MDCM V0.1)
+# Majula 分布式通信中间件 (MDCM V0.1)
 
-Majula is a lightweight, distributed communication middleware written in Go. It provides robust node-to-node messaging, RPC, topic-based pub/sub, NAT traversal (FRP), dynamic Nginx reverse proxy, and more. Majula is ideal for microservices, distributed systems, NAT traversal, and real-time messaging scenarios. 
+> ⚠️ **重要提醒**: 本项目目前仍在测试和优化阶段，存在许多潜在问题。不建议在生产环境中使用。欢迎测试和反馈，但请谨慎使用。
 
-The name Majula comes from Dark Souls II. It represents the Firelink Shrine in that game and probably the warmest place in the Souls series. People meet in adventures and come togather around the Firelink Shrine. I hope my middleware can help connect people as well — or more likely, the devices.
+Majula 是一个用 Go 语言编写的轻量级分布式通信中间件。它提供节点间消息传递、RPC、基于主题的发布/订阅、NAT 穿透、动态 Nginx 反向代理等功能。Majula 适用于微服务、分布式系统、NAT 穿透和实时消息传递场景。
 
-Moreover, super excited to roll out v0.1. It is a version that the basic functionalities inside my mind come to place and could work through simple tests, More debugs and improvements on the way.
-
----
-
-## 🌟 Features
-
-- **Distributed Node Management**: Automatic node discovery, heartbeat, and link management.
-- **Lightweight Message Routing**: Point-to-point, topic pub/sub, and broadcast messaging.
-- **RPC (Remote Procedure Call)**: Register and invoke custom RPC services between nodes, supporting sync/async calls.
-- **WebSocket & HTTP APIs**: Unified, extensible API for both WebSocket and RESTful HTTP clients.
-- **FRP NAT Traversal**: Built-in FRP tunneling for seamless node-to-node communication and file transfer across NATs.
-- **Dynamic Nginx Reverse Proxy**: Register and expose local services to remote nodes via HTTP mapping.
-- **Extensible Architecture**: Modular, easy to extend and integrate into your own systems.
-- **High-Performance KCP Channel**: Supports KCP-based reliable UDP channels for weak network and high-performance scenarios.
-- **Distributed Consistency (Raft)**: Multi-group Raft consensus, static core cluster, dynamic learners, and flexible group management.
+Majula 这个名字来自《黑暗之魂2》，代表游戏中的传火祭祀场，可能是魂系列中最温暖的地方。人们在冒险中相遇，聚集在传火祭祀场周围。我希望我的中间件也能帮助连接人们——或者更可能是设备。
 
 ---
 
-## 🚧 Planned Features
+## 🌟 核心功能
 
-- **Client Election**: Implement distributed client election to support leader selection and failover scenarios.
-- **Node Auto-Discovery**: Use signaling server + P2P hole punching for automatic node discovery (planned after voting feature).
-- **Advanced Network Optimizations**: Further optimize network performance, resource usage, and add more advanced features for scalability and robustness.
-- **More Extensible Plugins**: Add plugin hooks for custom protocols, storage engines, or monitoring.
+### 分布式节点管理
+每个节点都有唯一的ID，支持节点发现、心跳检测和链路管理。节点间通过TCP或KCP协议建立连接，形成网络拓扑。系统会维护节点间的连接状态，处理节点上线、下线等场景。
+
+### 轻量级消息路由
+支持点对点直接通信、基于主题的发布/订阅、广播消息。消息路由会根据目标节点选择路径，支持消息重试机制。发布/订阅模式允许节点订阅主题，接收相关消息。
+
+### RPC 远程调用
+支持在节点间注册和调用自定义服务。支持同步和异步调用模式，可以指定目标节点和服务提供者。RPC 系统处理网络传输、序列化等细节。
+
+### WebSocket & HTTP API
+提供统一的 API 接口，支持 WebSocket 和 HTTP 客户端。WebSocket 接口提供实时双向通信，HTTP 接口便于集成和测试。所有 API 都使用 JSON 数据格式。
+
+### 高性能 KCP 通道
+除了 TCP 连接，还支持基于 KCP 的 UDP 通道。KCP 通道在弱网络环境下延迟更低，适合对网络质量要求较高的场景。
 
 ---
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### 1. Install Dependencies
+### 1. 安装依赖
 ```bash
 go mod tidy
 ```
 
-### 2. Start Local Nodes (Example)
+### 2. 启动信令服务器（可选）
 ```bash
-nohup go run MajulaNodeFromYaml.go MajulaNode1.yaml &
-nohup go run MajulaNodeFromYaml.go MajulaNode2.yaml &
+go run SignalingServerFromYaml.go
 ```
-This will start two connected nodes on local.
-> You can customize node configuration via `MajulaNodeTemplate.yaml`.
 
-### Channel Protocol Configuration (TCP/KCP)
-
-Majula now supports both **TCP** and **KCP** channels. You can specify the protocol for each channel in your YAML config:
-
-```yaml
-channels:
-  - type: "server"
-    protocol: "tcp"
-    listen_addr: "127.0.0.1:29090"
-    tcp:
-      frame_size: 4096
-      inactive_seconds: 10
-      send_queue_size: 1000
-      max_connections_per_sec: 5
-      # tls: ...
-  - type: "server"
-    protocol: "kcp"
-    listen_addr: "127.0.0.1:30090"
-    kcp:
-      frame_size: 4096
-      inactive_seconds: 10
-      send_queue_size: 1000
-      max_connections_per_sec: 5
-      # Note: KCP channels do NOT support TLS.
-```
-- `protocol`: `tcp` or `kcp` (default is `tcp` if omitted for backward compatibility)
-- `tcp` block: supports all TCP options, including optional TLS.
-- `kcp` block: supports KCP options, **does not support TLS**.
-
-### 3. Connect and Test
-- Use a WebSocket client or curl/Postman for HTTP testing.
-- Or use `api/MajulaClient.go` as a Go SDK for your own applications.
-
----
-
-## 📡 HTTP API Overview
-
-All endpoints are under `/majula`, supporting both GET and POST.
-
-| Path         | Description             | Main Params         |
-|--------------|------------------------|---------------------|
-| /ws          | WebSocket connection   | target (optional)   |
-| /h           | HTTP message send/recv | see below           |
-| /sub         | Subscribe topic        | topic               |
-| /pub         | Publish topic message  | topic, args         |
-| /rpc         | RPC call               | fun, args, ...      |
-| /send        | Private message        | target_node, ...    |
-| /list_rpc    | List RPC services      |                     |
-| /map         | Nginx proxy mgmt       | see below           |
-| /frp         | FRP mgmt               | see below           |
-| /upload      | File upload            |                     |
-| /download    | File download          |                     |
-
-**Examples:**
+### 3. 启动本地节点
 ```bash
-curl -X POST http://localhost:8080/majula/sub -d '{"topic":"test"}'
-curl -X POST http://localhost:8080/majula/pub -d '{"topic":"test","args":{"msg":"hello"}}'
-curl -X POST http://localhost:8080/majula/rpc -d '{"fun":"add","args":{"a":1,"b":2}}'
+# 使用默认配置（不连接信令服务器）
+go run MajulaNodeFromYaml.go
+
+# 使用自定义配置
+go run MajulaNodeFromYaml.go MajulaNode1.yaml
+
+# 启用信令服务器连接
+go run MajulaNodeFromYaml.go MajulaNodeWithSignaling.yaml
 ```
+
+### 通道协议配置
+Majula 支持 TCP 和 KCP 两种通道协议。TCP 通道提供可靠的有序传输，支持 TLS 加密。KCP 通道基于 UDP，在弱网络环境下表现更好，但不支持 TLS。
 
 ---
 
-## 🔗 WebSocket API
+## 📡 API 接口概览
 
-### Connection
-```
-ws://localhost:8080/majula/ws/{client_id}
-```
+Majula 提供 API 接口，所有端点都在 `/majula` 路径下，支持 GET 和 POST 方法。
 
-### Message Format
-All WebSocket messages are JSON objects with the following structure:
-```json
-{
-  "method": "SUBSCRIBE|UNSUBSCRIBE|PUBLISH|RPC|REGISTER_RPC|UNREGISTER_RPC|SEND|QUIT|PRIVATE_MESSAGE|SUB_RESULT|RPC_RESULT|RETURN_RESULT|HEARTBEAT|REGISTER_CLIENT|REGISTER_FRP|REGISTER_FRP_WITH_ADDR|START_FRP_LISTENER_WITH_REGISTRATION|START_FRP_LISTENER_WITHOUT_REGISTRATION|START_FRP_LISTENER_WITH_LOCAL_ADDR|REGISTER_NGINX_FRP_AND_RUN|UNREGISTER_NGINX_FRP|UPLOAD_FILE|DOWNLOAD_FILE|...",
-  "topic": "test",           // Topic (optional)
-  "fun": "add",              // RPC function name (optional)
-  "args": {"a":1,"b":2},    // Parameters (optional)
-  "invokeid": 123,           // Invoke ID (optional)
-  "result": null             // Result (for server responses)
-}
-```
+### 核心功能接口
+- **WebSocket 连接**: 提供实时双向通信
+- **消息收发**: 支持点对点和广播消息传递
+- **主题订阅**: 支持基于主题的发布/订阅模式
+- **RPC 调用**: 支持远程过程调用，包括同步和异步模式
+- **私有消息**: 支持节点间的私有消息传递
 
-#### Supported Methods
-- `SUBSCRIBE`: Subscribe to a topic
-- `UNSUBSCRIBE`: Unsubscribe from a topic
-- `PUBLISH`: Publish a message to a topic
-- `RPC`: Call a remote RPC function
-- `REGISTER_RPC`: Register a local RPC service
-- `UNREGISTER_RPC`: Unregister a local RPC service
-- `SEND`: Send a private (P2P) message
-- `PRIVATE_MESSAGE`: Receive a private message
-- `SUB_RESULT`: Receive a topic message
-- `RPC_RESULT`: Receive an RPC result
-- `RETURN_RESULT`: Return result for an RPC call
-- `HEARTBEAT`: Heartbeat message
-- `REGISTER_CLIENT`: Register client ID
-- `REGISTER_FRP`: Register an FRP tunnel
-- `REGISTER_FRP_WITH_ADDR`: Register FRP by address
-- `START_FRP_LISTENER_WITH_REGISTRATION`: Start FRP listener (registered)
-- `START_FRP_LISTENER_WITHOUT_REGISTRATION`: Start FRP listener (dynamic)
-- `START_FRP_LISTENER_WITH_LOCAL_ADDR`: Start FRP listener by local address
-- `REGISTER_NGINX_FRP_AND_RUN`: Register and run Nginx reverse proxy
-- `UNREGISTER_NGINX_FRP`: Unregister Nginx reverse proxy
-- `UPLOAD_FILE`: Upload file to remote node
-- `DOWNLOAD_FILE`: Download file from remote node
-- `QUIT`: Disconnect
-- ... (and more, see code for full list)
+### 高级功能接口
+- **RPC 服务管理**: 注册、注销、查询 RPC 服务
+- **Nginx 代理管理**: 动态配置反向代理规则
+- **FRP 隧道管理**: 配置和管理 NAT 穿透隧道
+- **文件传输**: 支持节点间的文件上传和下载
 
-#### Server Push Example
-```json
-{
-  "method": "SUB_RESULT",
-  "topic": "test",
-  "args": {"msg":"hello"}
-}
-```
+### 系统管理接口
+- **节点信息**: 查询节点状态和连接信息
+- **健康检查**: 监控系统运行状态
+- **配置管理**: 动态调整系统配置
 
 ---
 
-## 🧩 Go SDK: WebSocket Client API (`api/apis.go`)
+## 🧩 开发工具
 
-Majula provides a high-level Go SDK for WebSocket communication and API calls. See `api/apis.go` for full details.
+### Go SDK
+Majula 提供了 Go SDK，封装了核心功能。SDK 提供了高级 API，处理底层的网络通信细节。
 
-### Main Methods
-- `NewClient(addr, entity)`: Create and connect a WebSocket client
-- `CallRpc(fun, args, targetNode, provider, timeout)`: Synchronous remote RPC call
-- `RegisterRpc(fun, handler, meta)`: Register a local RPC function
-- `CallRpcAsync(...)`: Asynchronous RPC call
-- `Subscribe(topic, handler)`: Subscribe to a topic
-- `Unsubscribe(topic)`: Unsubscribe from a topic
-- `Publish(topic, args)`: Publish a message to a topic
-- `OnPrivate(handler)`: Set private message handler
-- `SendPrivate(targetNode, targetClient, payload)`: Send a private message
-- `RegisterFRP(...)`, `RegisterNginxFRP(...)`: FRP/Nginx operations
-- `UploadFile(...)`, `DownloadFile(...)`: File transfer
-- `Quit()`: Close the client connection
+### 客户端库
+提供了客户端库，支持 WebSocket 和 HTTP 两种通信方式。客户端库处理连接管理、消息序列化、错误重试等细节。
 
-#### Example
-```go
-client := api.NewClient("ws://localhost:8080", "my-client")
-client.Subscribe("test", func(topic string, args map[string]interface{}) {
-    fmt.Println("Received:", topic, args)
-})
-client.Publish("test", map[string]interface{}{"msg": "hello"})
-res, ok := client.CallRpc("add", map[string]interface{}{"a":1, "b":2}, "targetNode", "default", time.Second)
-if ok {
-    fmt.Println("RPC result:", res)
-}
-client.Quit()
-```
+### 配置管理
+支持 YAML 格式的配置文件，可以配置节点参数、网络设置、安全选项等。
 
 ---
 
-## 🛠️ Advanced Features
+## 🌐 FRP NAT 穿透
 
-- **FRP NAT Traversal**: Register/start FRP tunnels via `/majula/frp` or SDK for seamless node-to-node communication.
-- **Nginx Reverse Proxy**: Dynamically register local HTTP services to remote nodes via `/majula/map` or SDK.
-- **File Transfer**: Upload/download files between nodes.
+### 隧道功能
+内置 FRP 隧道功能，解决 NAT 环境下的节点间通信问题。支持端口映射、文件传输、服务暴露等功能。通过 FRP 隧道，不同网络环境的节点可以建立直接连接。
 
----
+### 动态端口映射
+支持动态配置端口映射规则，无需手动配置防火墙。节点可以自动注册和注销端口映射，实现灵活的网络访问控制。
 
-## ⚡ Distributed Consistency & Raft Support
+### 文件传输
+基于 FRP 隧道实现节点间的文件传输功能。支持大文件传输、断点续传、传输进度监控等特性。
 
-- **Multi-Raft Group**: Each group has independent leader election, log replication, and state machine. A single node can participate in multiple groups.
-- **Static Core Cluster + Dynamic Learner**: Core nodes are statically configured in YAML; learner nodes can join/leave at runtime for read-only replicas, data synchronization, and disaster recovery.
-- **Flexible Group Management**: Easily create, join, or remove Raft groups and learners at runtime via API or configuration.
-
-### Example: YAML Raft Configuration
-
-```yaml
-raft:
-  - group: "raft-group-1"
-    peers:
-      - "node1"
-      - "node2"
-      - "node3"
-    dbpath: "./raftdb_group1_node1"
-  - group: "raft-group-2"
-    peers:
-      - "node1"
-      - "node4"
-      - "node5"
-    dbpath: "./raftdb_group2_node1"
-```
-- Multiple groups can be configured per node; each group is independent.
-- `peers` is the list of core node IDs; `dbpath` is the local persistent storage path for each group.
+### 服务暴露
+可以将本地服务通过 FRP 隧道暴露给远程节点，实现跨网络的服务访问。支持 HTTP、TCP、UDP 等多种协议。
 
 ---
 
-## ⚙️ Dependencies & Build
-- Go 1.18+
-- See `go.mod` for dependencies
-- Recommended: Linux/Mac/WSL environment
+## 🔄 动态 Nginx 反向代理
+
+### 代理功能
+提供动态 Nginx 反向代理功能，可以将本地服务暴露给远程节点。支持 HTTP 服务映射、负载均衡等功能。通过 API 调用可以动态配置代理规则。
+
+### 动态配置
+支持运行时动态添加、修改、删除代理规则，无需重启服务。通过简单的 API 调用就能实现代理配置的实时更新。
+
+### 负载均衡
+支持多种负载均衡策略，可以根据节点负载情况自动调整流量分配。提供健康检查功能，自动剔除故障节点。
+
+### SSL 终止
+支持 SSL 证书管理和 HTTPS 代理，提供安全的加密通信。可以配置多个域名和证书，实现灵活的 SSL 管理。
 
 ---
 
-## 📖 Directory Structure
-- `core/`: Core logic (nodes, channels, messages, RPC, FRP, Nginx, etc.)
-- `api/`: Client SDK & API definitions
-- `example/`: Example code
-- `MajulaNodeFromYaml.go`: Node startup entry
-- `MajulaNodeTemplate.yaml`: Node config template (now supports both TCP and KCP channels)
-- `MajulaNode1.yaml`/`MajulaNode2.yaml`: Node config samples
+## 📡 信令服务器
+
+### 基于UDP打洞
+提供基于UDP打洞技术的信令服务器，支持节点自动发现和连接协调。信令服务器作为节点间的中介，帮助节点发现彼此并建立直接连接。通过UDP打洞技术实现NAT穿透，适用于各种NAT环境。
+
+### 连接协调
+当节点需要建立 P2P 连接时，信令服务器协助交换连接信息，实现UDP打洞。支持多种NAT类型的穿透策略，包括对称型、锥型、端口限制型等NAT。
+
+### 状态管理
+维护所有连接节点的状态信息，包括节点在线状态、连接质量、服务能力等。提供节点状态查询和监控功能。
+
+### 消息中继
+在无法建立直接连接的情况下，信令服务器可以作为消息中继，确保节点间的通信可靠性。
 
 ---
 
-## 💡 Contact & Contribute
-For suggestions, bug reports, or contributions, feel free to open an Issue or PR!
+## ⚡ 分布式一致性
+
+### Raft 共识算法
+Majula 实现了 Raft 共识算法，提供强一致性的分布式数据管理。每个 Raft 组都有独立的领导者选举、日志复制和状态机。
+
+### 多组支持
+单个节点可以参与多个独立的 Raft 组，每个组管理不同的数据。这种设计允许根据业务需求划分数据分区。
+
+### 静态核心集群
+核心节点在配置文件中静态定义，确保集群的稳定性。核心节点参与所有共识决策，保证数据一致性。
+
+### 动态学习者
+支持动态添加学习者节点，学习者节点可以读取数据但不参与共识决策。适用于数据同步、备份等场景。
+
+---
+
+## 🏛️ 分布式选举
+
+### 轻量级设计
+选举系统采用轻量级设计，不依赖复杂的共识算法，提供快速故障转移能力。适用于对一致性要求不高但对可用性要求高的场景。
+
+### 三状态机制
+节点在选举过程中有三种状态：忙碌状态（初始化中）、备用状态（准备接管）、值班状态（当前领导者）。状态转换基于心跳和超时机制。
+
+### 故障检测
+通过心跳机制检测节点故障，当领导者节点故障时，备用节点会接管。故障检测时间可配置。
+
+### 多选举组
+支持多个独立的选举组，每个组独立进行领导者选举。适用于不同业务模块的高可用性需求。
+
+### 应用场景
+- **API 网关高可用**: 多个网关节点，一个活跃
+- **任务调度器**: 避免重复任务执行
+- **服务发现**: 主服务协调器
+- **负载均衡器**: 主负载均衡器与备份
+
+---
+
+## 🔧 已实现特性
+
+### 网络优化
+- **连接池管理**: 管理连接池，复用连接
+- **流量控制**: 实现连接速率限制，防止系统过载
+- **超时重试**: 处理网络超时和重试逻辑
+
+### 安全机制
+- **TLS 加密**: 支持 TLS 加密通信
+- **身份认证**: 支持基于 Token 的身份认证
+- **访问控制**: 支持 IP 白名单和访问权限控制
+
+### 监控和调试
+- **日志系统**: 支持结构化日志和日志级别控制
+- **健康检查**: 提供系统健康状态检查接口
+- **调试工具**: 提供调试接口和工具
+
+---
+
+## ⚙️ 系统要求
+
+- **Go 版本**: 1.18 或更高版本
+- **操作系统**: 支持 Linux、macOS、Windows
+- **网络**: 支持 TCP/UDP 网络通信
+- **内存**: 建议至少 512MB 可用内存
+- **存储**: 支持本地文件系统存储
+
+---
+
+## 📖 项目结构
+
+- **core/**: 核心逻辑模块，包含节点管理、消息路由、RPC 框架等
+- **api/**: 客户端 SDK 和 API 定义
+- **server/**: 信令服务器实现
+- **example/**: 示例代码和用法演示
+- **MajulaNodeFromYaml.go**: 节点启动入口程序
+- **SignalingServerFromYaml.go**: 信令服务器启动入口程序
+- **MajulaNodeTemplate.yaml**: 节点配置模板
+- **SignalingServerTemplate.yaml**: 信令服务器配置模板
+
+---
+
+## 💡 联系与贡献
+
+如有建议、错误报告或贡献，欢迎提交 Issue 或 PR！我们欢迎任何形式的贡献，包括但不限于：
+
+- 功能建议和需求反馈
+- 代码改进和优化
+- 文档完善和翻译
+- 测试用例和示例代码
+- 性能优化和问题修复

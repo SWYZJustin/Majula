@@ -2,6 +2,14 @@
 node_id: "node1"
 token: "default_token"
 
+# 信令服务器配置（可选）
+signaling_server:
+  enabled: false  # 是否启用信令服务器连接
+  url: "ws://localhost:8080/ws"  # 信令服务器WebSocket地址
+  udp_port: 8081  # 信令服务器UDP端口
+  reconnect_interval: "30s"  # 重连间隔
+  heartbeat_interval: "30s"  # 心跳间隔
+
 majula_servers:
   - port: 18080
 

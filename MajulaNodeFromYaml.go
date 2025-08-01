@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -52,12 +53,21 @@ type RaftConfigYaml struct {
 	DBPath string   `yaml:"dbpath"`
 }
 
+type NodeSignalingServerConfigYaml struct {
+	Enabled           bool   `yaml:"enabled"`
+	URL               string `yaml:"url"`
+	UDPPort           int    `yaml:"udp_port"`
+	ReconnectInterval string `yaml:"reconnect_interval"`
+	HeartbeatInterval string `yaml:"heartbeat_interval"`
+}
+
 type NodeConfigYaml struct {
-	NodeID        string                   `yaml:"node_id"`
-	Token         string                   `yaml:"token"`
-	MajulaServers []MajulaServerConfigYaml `yaml:"majula_servers"`
-	Channels      []ChannelConfigYaml      `yaml:"channels"`
-	Raft          []RaftConfigYaml         `yaml:"raft"`
+	NodeID          string                        `yaml:"node_id"`
+	Token           string                        `yaml:"token"`
+	SignalingServer NodeSignalingServerConfigYaml `yaml:"signaling_server"`
+	MajulaServers   []MajulaServerConfigYaml      `yaml:"majula_servers"`
+	Channels        []ChannelConfigYaml           `yaml:"channels"`
+	Raft            []RaftConfigYaml              `yaml:"raft"`
 }
 
 func buildTLSConfig(tlsConf *TLSConfigYaml) (*tls.Config, error) {
@@ -159,6 +169,40 @@ func main() {
 	fmt.Printf("加载配置: %+v\n", conf)
 
 	node := core.NewNode(conf.NodeID)
+
+	// 初始化信令客户端（如果启用）
+	if conf.SignalingServer.Enabled {
+		fmt.Printf("正在初始化信令客户端，连接到: %s\n", conf.SignalingServer.URL)
+
+		// 解析时间配置
+		reconnectInterval := parseDuration(conf.SignalingServer.ReconnectInterval)
+		heartbeatInterval := parseDuration(conf.SignalingServer.HeartbeatInterval)
+
+		// 创建信令客户端配置
+		signalingConfig := &core.SignalingClientConfig{
+			SignalingURL:      conf.SignalingServer.URL,
+			SignalingUDPPort:  conf.SignalingServer.UDPPort,
+			ReconnectInterval: reconnectInterval,
+			HeartbeatInterval: heartbeatInterval,
+			ReadTimeout:       60 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			MaxMessageSize:    4096,
+		}
+
+		// 创建信令客户端
+		signalingClient := core.NewSignalingClient(conf.NodeID, conf.NodeID, 0, signalingConfig)
+		signalingClient.SetNode(node)
+		node.SignalingClient = signalingClient
+
+		// 连接到信令服务器
+		if err := signalingClient.Connect(); err != nil {
+			log.Printf("警告: 连接信令服务器失败: %v", err)
+		} else {
+			fmt.Printf("成功连接到信令服务器: %s\n", conf.SignalingServer.URL)
+		}
+	} else {
+		fmt.Println("信令服务器连接已禁用")
+	}
 
 	// Raft集群初始化
 	if len(conf.Raft) > 0 {

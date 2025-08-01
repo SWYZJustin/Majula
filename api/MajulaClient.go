@@ -595,7 +595,7 @@ func (c *MajulaClient) DownloadFileFromRemote(remoteNode, remotePath, localPath 
 	})
 }
 
-// 加入本地 learner
+// JoinRaftGroupAsLearner 加入本地 learner
 // 参数：group - raft group 名称，dbPath - learner 本地存储路径
 func (c *MajulaClient) JoinRaftGroupAsLearner(group string, dbPath string) {
 	pkg := MajulaPackage{
@@ -608,7 +608,7 @@ func (c *MajulaClient) JoinRaftGroupAsLearner(group string, dbPath string) {
 	c.Send(pkg)
 }
 
-// 退出本地 learner
+// LeaveRaftGroupAsLearner 退出本地 learner
 // 参数：group - raft group 名称
 func (c *MajulaClient) LeaveRaftGroupAsLearner(group string) {
 	pkg := MajulaPackage{
@@ -616,6 +616,54 @@ func (c *MajulaClient) LeaveRaftGroupAsLearner(group string) {
 		Args: map[string]interface{}{
 			"group": group,
 		},
+	}
+	c.Send(pkg)
+}
+
+// JoinElection 加入选举组
+func (c *MajulaClient) JoinElection(groupName string, baseOvertimeT int64) {
+	pkg := MajulaPackage{
+		Method: "JOIN_ELECTION",
+		Args: map[string]interface{}{
+			"group":           groupName,
+			"base_overtime_t": baseOvertimeT,
+		},
+	}
+	c.Send(pkg)
+}
+
+// GiveUpElection 放弃选举（主动放弃值班）
+func (c *MajulaClient) GiveUpElection(groupName string) {
+	pkg := MajulaPackage{
+		Method: "GIVEUP_ELECTION",
+		Args: map[string]interface{}{
+			"group": groupName,
+		},
+	}
+	c.Send(pkg)
+}
+
+// LeaveElection 退出选举组
+func (c *MajulaClient) LeaveElection(groupName string) {
+	pkg := MajulaPackage{
+		Method: "LEAVE_ELECTION",
+		Args: map[string]interface{}{
+			"group": groupName,
+		},
+	}
+	c.Send(pkg)
+}
+
+// GetElectionStatus 获取选举状态
+func (c *MajulaClient) GetElectionStatus(groupName string) {
+	args := map[string]interface{}{}
+	if groupName != "" {
+		args["group"] = groupName
+	}
+
+	pkg := MajulaPackage{
+		Method: "GET_ELECTION_STATUS",
+		Args:   args,
 	}
 	c.Send(pkg)
 }
