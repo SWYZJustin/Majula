@@ -220,3 +220,33 @@ func (c *Client) LeaveElection(groupName string) {
 func (c *Client) GetElectionStatus(groupName string) {
 	c.inner.GetElectionStatus(groupName)
 }
+
+// PutInRaftGroup 向Raft组中写入键值对
+func (c *Client) PutInRaftGroup(group, key string, value interface{}, timeout time.Duration) (interface{}, bool) {
+	return c.inner.PutInGroup(group, key, value, timeout)
+}
+
+// DeleteFromRaftGroup 从Raft组中删除键
+func (c *Client) DeleteFromRaftGroup(group, key string, timeout time.Duration) (interface{}, bool) {
+	return c.inner.DeleteFromGroup(group, key, timeout)
+}
+
+// GetFromRaftGroup 从Raft组中读取值
+func (c *Client) GetFromRaftGroup(group, key string, timeout time.Duration) (interface{}, bool) {
+	return c.inner.GetFromGroup(group, key, timeout)
+}
+
+// PutInRaftGroupWithDefaultTimeout 向Raft组中写入键值对（使用默认超时时间）
+func (c *Client) PutInRaftGroupWithDefaultTimeout(group, key string, value interface{}) (interface{}, bool) {
+	return c.inner.PutInGroup(group, key, value, 10*time.Second)
+}
+
+// DeleteFromRaftGroupWithDefaultTimeout 从Raft组中删除键（使用默认超时时间）
+func (c *Client) DeleteFromRaftGroupWithDefaultTimeout(group, key string) (interface{}, bool) {
+	return c.inner.DeleteFromGroup(group, key, 10*time.Second)
+}
+
+// GetFromRaftGroupWithDefaultTimeout 从Raft组中读取值（使用默认超时时间）
+func (c *Client) GetFromRaftGroupWithDefaultTimeout(group, key string) (interface{}, bool) {
+	return c.inner.GetFromGroup(group, key, 10*time.Second)
+}

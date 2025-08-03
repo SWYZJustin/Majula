@@ -31,7 +31,12 @@ type LearnerClient struct {
 func NewLearnerClient(group string, node *Node, dbPath string) *LearnerClient {
 	storage, err := NewStorage(dbPath, node.ID)
 	if err != nil {
-		panic(err)
+		fmt.Printf("[Learner][%s] Failed to create storage: %v\n", node.ID, err)
+		// 使用内存存储作为fallback
+		storage = &Storage{
+			db:     nil,
+			NodeId: node.ID,
+		}
 	}
 
 	lc := &LearnerClient{
@@ -52,7 +57,9 @@ func NewLearnerClient(group string, node *Node, dbPath string) *LearnerClient {
 	lc.LoadLogs()
 
 	if lc.CommitIndex > lc.LastApplied {
+		lc.Mutex.Lock()
 		lc.applyLogToStateMachine()
+		lc.Mutex.Unlock()
 	}
 
 	return lc
@@ -171,9 +178,6 @@ func (lc *LearnerClient) replyAppendEntries(leaderId string, success bool, confl
 // applyLogToStateMachine 将已提交日志应用到本地状态机，并持久化元数据。
 // 支持业务回调。
 func (lc *LearnerClient) applyLogToStateMachine() {
-	lc.Mutex.Lock()
-	defer lc.Mutex.Unlock()
-
 	for lc.LastApplied < lc.CommitIndex {
 		lc.LastApplied++
 		entry := lc.Log[lc.LastApplied-1]

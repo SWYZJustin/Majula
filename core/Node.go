@@ -5,7 +5,6 @@ import (
 	"Majula/common"
 	"container/heap"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -805,13 +804,15 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 		case RaftMessage:
 			content := []byte(msg.MessageData.Data)
 			var payload RaftPayload
-			if err := json.Unmarshal(content, &payload); err != nil {
+			if err := common.UnmarshalAny(content, &payload); err != nil {
 				fmt.Println("[Raft] Failed to unmarshal RaftPayload:", err)
 				break
 			}
 			group := payload.Group
+			//fmt.Println("Ohhhhhhhhhhhhhhhhh!" + group)
 			stub := node.getRaftStub(group)
 			if stub != nil {
+				//fmt.Println("Find the target Stub! =============================================")
 				go stub.onRaftMessage(group, msg.From, node.ID, content)
 				break
 			}

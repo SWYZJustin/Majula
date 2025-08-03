@@ -30,6 +30,9 @@ func NewStorage(path, nodeId string) (*Storage, error) {
 
 // Close 关闭底层LevelDB数据库。
 func (s *Storage) Close() error {
+	if s.db == nil {
+		return nil // 内存模式，无需关闭
+	}
 	return s.db.Close()
 }
 
@@ -46,6 +49,9 @@ func (s *Storage) makeKey(group, category, key string) []byte {
 // entry: 日志条目
 // 返回：error
 func (s *Storage) SaveLog(group string, entry RaftLogEntry) error {
+	if s.db == nil {
+		return nil // 内存模式，不持久化
+	}
 	key := fmt.Sprintf("%020d", entry.Index)
 	fullKey := s.makeKey(group, "log", key)
 	data, err := json.Marshal(entry)
@@ -60,6 +66,9 @@ func (s *Storage) SaveLog(group string, entry RaftLogEntry) error {
 // index: 日志索引
 // 返回：*RaftLogEntry, error
 func (s *Storage) GetLog(group string, index int64) (*RaftLogEntry, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("no storage available")
+	}
 	key := fmt.Sprintf("%020d", index)
 	fullKey := s.makeKey(group, "log", key)
 	data, err := s.db.Get(fullKey, nil)
@@ -76,6 +85,9 @@ func (s *Storage) GetLog(group string, index int64) (*RaftLogEntry, error) {
 // index: 截止索引（不含）
 // 返回：error
 func (s *Storage) DeleteLogsBefore(group string, index int64) error {
+	if s.db == nil {
+		return nil // 内存模式，不持久化
+	}
 	prefix := fmt.Sprintf("node:%s:group:%s:log:", s.NodeId, group)
 	iter := s.db.NewIterator(nil, nil)
 	defer iter.Release()
@@ -95,6 +107,9 @@ func (s *Storage) DeleteLogsBefore(group string, index int64) error {
 // group: 组ID
 // 返回：[]RaftLogEntry, error
 func (s *Storage) LoadLogs(group string) ([]RaftLogEntry, error) {
+	if s.db == nil {
+		return []RaftLogEntry{}, nil // 内存模式，返回空日志
+	}
 	prefix := fmt.Sprintf("node:%s:group:%s:log:", s.NodeId, group)
 	iter := s.db.NewIterator(nil, nil)
 	defer iter.Release()
@@ -115,6 +130,9 @@ func (s *Storage) LoadLogs(group string) ([]RaftLogEntry, error) {
 
 // SaveMeta 持久化元数据（term、votedFor、commitIndex、lastApplied）。
 func (s *Storage) SaveMeta(group string, term int64, votedFor string, commitIndex, lastApplied int64) error {
+	if s.db == nil {
+		return nil // 内存模式，不持久化
+	}
 	meta := map[string]interface{}{
 		"term":        term,
 		"votedFor":    votedFor,
@@ -128,6 +146,9 @@ func (s *Storage) SaveMeta(group string, term int64, votedFor string, commitInde
 // LoadMeta 加载group的元数据。
 // 返回：term, votedFor, commitIndex, lastApplied, error
 func (s *Storage) LoadMeta(group string) (int64, string, int64, int64, error) {
+	if s.db == nil {
+		return 0, "", 0, 0, nil // 内存模式，返回默认值
+	}
 	data, err := s.db.Get(s.makeKey(group, "meta", "info"), nil)
 	if err != nil {
 		return 0, "", 0, 0, err
@@ -145,17 +166,26 @@ func (s *Storage) LoadMeta(group string) (int64, string, int64, int64, error) {
 
 // PutState 存储状态机KV。
 func (s *Storage) PutState(group, key string, value interface{}) error {
+	if s.db == nil {
+		return nil // 内存模式，不持久化
+	}
 	data, _ := json.Marshal(value)
 	return s.db.Put(s.makeKey(group, "state", key), data, nil)
 }
 
 // DeleteState 删除状态机KV。
 func (s *Storage) DeleteState(group, key string) error {
+	if s.db == nil {
+		return nil // 内存模式，不持久化
+	}
 	return s.db.Delete(s.makeKey(group, "state", key), nil)
 }
 
 // GetState 获取状态机KV。
 func (s *Storage) GetState(group, key string) (interface{}, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("no storage available")
+	}
 	data, err := s.db.Get(s.makeKey(group, "state", key), nil)
 	if err != nil {
 		return nil, err
@@ -167,6 +197,9 @@ func (s *Storage) GetState(group, key string) (interface{}, error) {
 
 // DeleteLogsFrom 删除指定index及之后的所有日志。
 func (s *Storage) DeleteLogsFrom(group string, startIndex int64) error {
+	if s.db == nil {
+		return nil // 内存模式，不持久化
+	}
 	prefix := fmt.Sprintf("node:%s:group:%s:log:", s.NodeId, group)
 	iter := s.db.NewIterator(nil, nil)
 	defer iter.Release()

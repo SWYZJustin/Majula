@@ -573,14 +573,16 @@ func (node *Node) RegisterDefaultRPCs() {
 			return map[string]interface{}{"error": fmt.Sprintf("raft group %s not found", group)}
 		}
 
-		raftClient.Mutex.Lock()
-		defer raftClient.Mutex.Unlock()
 		if raftClient.Role != Leader {
-			return map[string]interface{}{
+			raftClient.Mutex.Lock()
+			res := map[string]interface{}{
 				"success":     false,
 				"redirect_to": raftClient.LeaderHint,
 				"message":     "not leader",
 			}
+			raftClient.Mutex.Unlock()
+
+			return res
 		}
 
 		raftClient.AddLearner(learnerID)
@@ -590,7 +592,7 @@ func (node *Node) RegisterDefaultRPCs() {
 			"message": fmt.Sprintf("learner %s added to group %s", learnerID, group),
 		}
 	})
-	
+
 	node.registerRpcService("removeLearner", "raft", RPC_FuncInfo{
 		Note: "Remove a learner from a Raft group",
 	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
@@ -609,15 +611,17 @@ func (node *Node) RegisterDefaultRPCs() {
 		if !exists {
 			return map[string]interface{}{"error": fmt.Sprintf("raft group %s not found", group)}
 		}
-
-		raftClient.Mutex.Lock()
-		defer raftClient.Mutex.Unlock()
+		
 		if raftClient.Role != Leader {
-			return map[string]interface{}{
+			raftClient.Mutex.Lock()
+			res := map[string]interface{}{
 				"success":     false,
 				"redirect_to": raftClient.LeaderHint,
 				"message":     "not leader",
 			}
+			raftClient.Mutex.Unlock()
+
+			return res
 		}
 
 		raftClient.RemoveLearner(learnerID)
@@ -625,6 +629,172 @@ func (node *Node) RegisterDefaultRPCs() {
 		return map[string]interface{}{
 			"success": true,
 			"message": fmt.Sprintf("learner %s removed from group %s", learnerID, group),
+		}
+	})
+
+	// Raft Put 操作
+	node.registerRpcService("put", "raft", RPC_FuncInfo{
+		Note: "Put a key-value pair to Raft group",
+	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		group, ok := params["group"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing group"}
+		}
+		key, ok := params["key"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing key"}
+		}
+		value, ok := params["value"]
+		if !ok {
+			return map[string]interface{}{"error": "missing value"}
+		}
+
+		// 检查本地是否有对应的Raft核心节点
+		node.RaftManager.RaftStubsMutex.RLock()
+		raftClient, exists := node.RaftManager.RaftStubs[group]
+		node.RaftManager.RaftStubsMutex.RUnlock()
+
+		if exists {
+			// 本地有核心节点，直接处理
+			cmd := RaftCommand{
+				Op:    put,
+				Key:   key,
+				Value: value,
+			}
+			raftClient.HandleClientRequest(cmd)
+			return map[string]interface{}{
+				"success": true,
+				"message": fmt.Sprintf("put command sent to local raft group %s", group),
+			}
+		} else {
+			// 本地没有核心节点，需要转发给其他核心节点
+			node.RaftManager.RaftPeersMutex.RLock()
+			peers, hasPeers := node.RaftManager.RaftPeers[group]
+			node.RaftManager.RaftPeersMutex.RUnlock()
+
+			if !hasPeers {
+				return map[string]interface{}{"error": fmt.Sprintf("no peers found for raft group %s", group)}
+			}
+
+			// 尝试转发给第一个可用的核心节点
+			for _, peer := range peers {
+				if peer == node.ID {
+					continue // 跳过自己
+				}
+				result, ok := node.MakeRpcRequest(peer, "raft", "put", params)
+				if ok {
+					return result
+				}
+			}
+
+			return map[string]interface{}{"error": fmt.Sprintf("failed to forward put command to any peer in group %s", group)}
+		}
+	})
+
+	// Raft Delete 操作
+	node.registerRpcService("delete", "raft", RPC_FuncInfo{
+		Note: "Delete a key from Raft group",
+	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		group, ok := params["group"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing group"}
+		}
+		key, ok := params["key"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing key"}
+		}
+
+		// 检查本地是否有对应的Raft核心节点
+		node.RaftManager.RaftStubsMutex.RLock()
+		raftClient, exists := node.RaftManager.RaftStubs[group]
+		node.RaftManager.RaftStubsMutex.RUnlock()
+
+		if exists {
+			// 本地有核心节点，直接处理
+			cmd := RaftCommand{
+				Op:  delOp,
+				Key: key,
+			}
+			raftClient.HandleClientRequest(cmd)
+			return map[string]interface{}{
+				"success": true,
+				"message": fmt.Sprintf("delete command sent to local raft group %s", group),
+			}
+		} else {
+			// 本地没有核心节点，需要转发给其他核心节点
+			node.RaftManager.RaftPeersMutex.RLock()
+			peers, hasPeers := node.RaftManager.RaftPeers[group]
+			node.RaftManager.RaftPeersMutex.RUnlock()
+
+			if !hasPeers {
+				return map[string]interface{}{"error": fmt.Sprintf("no peers found for raft group %s", group)}
+			}
+
+			// 尝试转发给第一个可用的核心节点
+			for _, peer := range peers {
+				if peer == node.ID {
+					continue // 跳过自己
+				}
+				result, ok := node.MakeRpcRequest(peer, "raft", "delete", params)
+				if ok {
+					return result
+				}
+			}
+
+			return map[string]interface{}{"error": fmt.Sprintf("failed to forward delete command to any peer in group %s", group)}
+		}
+	})
+
+	// Raft Get 操作（只读操作，不需要通过Raft共识）
+	node.registerRpcService("get", "raft", RPC_FuncInfo{
+		Note: "Get a value from Raft group (read-only operation)",
+	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		group, ok := params["group"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing group"}
+		}
+		key, ok := params["key"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing key"}
+		}
+
+		// 检查本地是否有对应的Raft核心节点
+		node.RaftManager.RaftStubsMutex.RLock()
+		raftClient, exists := node.RaftManager.RaftStubs[group]
+		node.RaftManager.RaftStubsMutex.RUnlock()
+
+		if exists {
+			// 本地有核心节点，直接读取
+			value, err := raftClient.Storage.GetState(group, key)
+			if err != nil {
+				return map[string]interface{}{"error": fmt.Sprintf("failed to get value: %v", err)}
+			}
+			return map[string]interface{}{
+				"success": true,
+				"value":   value,
+			}
+		} else {
+			// 本地没有核心节点，需要转发给其他核心节点
+			node.RaftManager.RaftPeersMutex.RLock()
+			peers, hasPeers := node.RaftManager.RaftPeers[group]
+			node.RaftManager.RaftPeersMutex.RUnlock()
+
+			if !hasPeers {
+				return map[string]interface{}{"error": fmt.Sprintf("no peers found for raft group %s", group)}
+			}
+
+			// 尝试转发给第一个可用的核心节点
+			for _, peer := range peers {
+				if peer == node.ID {
+					continue // 跳过自己
+				}
+				result, ok := node.MakeRpcRequest(peer, "raft", "get", params)
+				if ok {
+					return result
+				}
+			}
+
+			return map[string]interface{}{"error": fmt.Sprintf("failed to forward get command to any peer in group %s", group)}
 		}
 	})
 

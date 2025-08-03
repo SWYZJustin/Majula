@@ -6,7 +6,7 @@ import (
 )
 
 // UseMsgPack controls whether to use MessagePack (true) or JSON (false) for serialization.
-var UseMsgPack bool = true
+var UseMsgPack bool = false
 
 // MarshalJSON serializes data to JSON.
 func MarshalJSON(v interface{}) ([]byte, error) {

@@ -1075,3 +1075,767 @@ func TestKcpDynamicTunnel(t *testing.T) {
 	clientA.StubManager.CloseAllStubs()
 	//t.Logf("[TEST] Closed all stubs")
 }
+
+func TestRaft(t *testing.T) {
+	// 清理之前的测试数据
+	os.RemoveAll("./test_raft_data")
+
+	t.Log("=== 开始8节点Raft测试 ===")
+
+	// 定义连接地址
+	inBetweenConn1 := "127.0.0.1:3001" // core1 <-> core2
+	inBetweenConn2 := "127.0.0.1:3002" // core2 <-> core3
+	inBetweenConn3 := "127.0.0.1:3003" // core3 <-> core4
+	inBetweenConn4 := "127.0.0.1:3004" // core4 <-> core1
+
+	outerConn1 := "127.0.0.1:3005" // core1 <-> learner1
+	outerConn2 := "127.0.0.1:3006" // core2 <-> learner2
+	outerConn3 := "127.0.0.1:3007" // core3 <-> learner3
+	outerConn4 := "127.0.0.1:3008" // core4 <-> learner4
+
+	// 创建8个节点
+	core1 := NewNode("core1")
+	core2 := NewNode("core2")
+	core3 := NewNode("core3")
+	core4 := NewNode("core4")
+
+	learner1 := NewNode("learner1")
+	learner2 := NewNode("learner2")
+	learner3 := NewNode("learner3")
+	learner4 := NewNode("learner4")
+
+	// 建立核心节点之间的环状连接
+	t.Log("建立核心节点环状连接...")
+	core1.CreateSimpleChannel("c1->c2", false, inBetweenConn1) // core1 服务器
+	core2.CreateSimpleChannel("c2->c1", true, inBetweenConn1)  // core2 客户端
+
+	core2.CreateSimpleChannel("c2->c3", false, inBetweenConn2) // core2 服务器
+	core3.CreateSimpleChannel("c3->c2", true, inBetweenConn2)  // core3 客户端
+
+	core3.CreateSimpleChannel("c3->c4", false, inBetweenConn3) // core3 服务器
+	core4.CreateSimpleChannel("c4->c3", true, inBetweenConn3)  // core4 客户端
+
+	core4.CreateSimpleChannel("c4->c1", false, inBetweenConn4) // core4 服务器
+	core1.CreateSimpleChannel("c1->c4", true, inBetweenConn4)  // core1 客户端
+
+	// 建立learner节点连接
+	t.Log("建立learner节点连接...")
+	core1.CreateSimpleChannel("c1->l1", false, outerConn1)   // core1 客户端
+	learner1.CreateSimpleChannel("l1->c1", true, outerConn1) // learner1 服务器
+
+	core2.CreateSimpleChannel("c2->l2", false, outerConn2)   // core2 客户端
+	learner2.CreateSimpleChannel("l2->c2", true, outerConn2) // learner2 服务器
+
+	core3.CreateSimpleChannel("c3->l3", false, outerConn3)   // core3 客户端
+	learner3.CreateSimpleChannel("l3->c3", true, outerConn3) // learner3 服务器
+
+	core4.CreateSimpleChannel("c4->l4", false, outerConn4)   // core4 客户端
+	learner4.CreateSimpleChannel("l4->c4", true, outerConn4) // learner4 服务器
+
+	// 注册所有节点
+	t.Log("注册所有节点...")
+	core1.Register()
+	core2.Register()
+	core3.Register()
+	core4.Register()
+	learner1.Register()
+	learner2.Register()
+	learner3.Register()
+	learner4.Register()
+
+	// 等待网络稳定
+	t.Log("等待网络稳定...")
+	time.Sleep(3 * time.Second)
+
+	// 打印网络状态
+	t.Log("=== 网络状态 ===")
+	t.Logf("core1 路由表大小: %d", len(core1.RoutingTable))
+	t.Logf("core2 路由表大小: %d", len(core2.RoutingTable))
+	t.Logf("core3 路由表大小: %d", len(core3.RoutingTable))
+	t.Logf("core4 路由表大小: %d", len(core4.RoutingTable))
+	t.Logf("learner1 路由表大小: %d", len(learner1.RoutingTable))
+	t.Logf("learner2 路由表大小: %d", len(learner2.RoutingTable))
+	t.Logf("learner3 路由表大小: %d", len(learner3.RoutingTable))
+	t.Logf("learner4 路由表大小: %d", len(learner4.RoutingTable))
+
+	// 创建Raft组
+	raftGroupName := "test-raft-group"
+	peers := []string{"core1", "core2", "core3", "core4"}
+
+	t.Log("创建Raft组...")
+	// 核心节点创建Raft组
+	_, err := core1.RaftManager.CreateRaftGroup(raftGroupName, core1, peers, "./test_raft_data/test_group_core1")
+	if err != nil {
+		t.Fatalf("core1 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core1 创建Raft组成功")
+
+	_, err = core2.RaftManager.CreateRaftGroup(raftGroupName, core2, peers, "./test_raft_data/test_group_core2")
+	if err != nil {
+		t.Fatalf("core2 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core2 创建Raft组成功")
+
+	_, err = core3.RaftManager.CreateRaftGroup(raftGroupName, core3, peers, "./test_raft_data/test_group_core3")
+	if err != nil {
+		t.Fatalf("core3 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core3 创建Raft组成功")
+
+	_, err = core4.RaftManager.CreateRaftGroup(raftGroupName, core4, peers, "./test_raft_data/test_group_core4")
+	if err != nil {
+		t.Fatalf("core4 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core4 创建Raft组成功")
+
+	time.Sleep(5 * time.Second)
+	// Learner节点加入Raft组
+	t.Log("✓ learner1 开始尝试加入Raft组")
+	err = learner1.RaftManager.JoinAsLearner(raftGroupName, learner1, "./test_raft_data/test_group_learner1")
+	if err != nil {
+		t.Fatalf("learner1 加入Raft组失败: %v", err)
+	}
+	t.Log("✓ learner1 加入Raft组成功")
+
+	t.Log("✓ learner2 开始尝试加入Raft组")
+	err = learner2.RaftManager.JoinAsLearner(raftGroupName, learner2, "./test_raft_data/test_group_learner2")
+	if err != nil {
+		t.Fatalf("learner2 加入Raft组失败: %v", err)
+	}
+	t.Log("✓ learner2 加入Raft组成功")
+
+	t.Log("✓ learner3 开始尝试加入Raft组")
+	err = learner3.RaftManager.JoinAsLearner(raftGroupName, learner3, "./test_raft_data/test_group_learner3")
+	if err != nil {
+		t.Fatalf("learner3 加入Raft组失败: %v", err)
+	}
+	t.Log("✓ learner3 加入Raft组成功")
+
+	t.Log("✓ learner4 开始尝试加入Raft组")
+	err = learner4.RaftManager.JoinAsLearner(raftGroupName, learner4, "./test_raft_data/test_group_learner4")
+	if err != nil {
+		t.Fatalf("learner4 加入Raft组失败: %v", err)
+	}
+	t.Log("✓ learner4 加入Raft组成功")
+
+	// 等待Raft组稳定
+	t.Log("等待Raft组稳定...")
+	time.Sleep(5 * time.Second)
+
+	// 打印Raft状态
+	t.Log("=== Raft状态 ===")
+	printRaftStatus(t, "core1", core1, raftGroupName)
+	printRaftStatus(t, "core2", core2, raftGroupName)
+	printRaftStatus(t, "core3", core3, raftGroupName)
+	printRaftStatus(t, "core4", core4, raftGroupName)
+
+	// 执行随机操作测试
+	t.Log("=== 开始随机操作测试 ===")
+	operations := generateRandomOperations(20)
+
+	for i, op := range operations {
+		t.Logf("执行操作 %d/%d: %s.%s(%s, %s)",
+			i+1, len(operations), op.NodeID, op.OpType, op.Key, op.Value)
+
+		// 选择执行节点
+		var targetNode *Node
+		switch op.NodeID {
+		case "node-1":
+			targetNode = core1
+		case "node-2":
+			targetNode = core2
+		case "node-3":
+			targetNode = core3
+		case "node-4":
+			targetNode = core4
+		case "node-5":
+			targetNode = learner1
+		case "node-6":
+			targetNode = learner2
+		case "node-7":
+			targetNode = learner3
+		case "node-8":
+			targetNode = learner4
+		default:
+			targetNode = core1
+		}
+
+		// 执行put操作
+		params := map[string]interface{}{
+			"group": raftGroupName,
+			"key":   op.Key,
+			"value": op.Value,
+		}
+
+		result, ok := targetNode.MakeRpcRequest(targetNode.ID, "raft", "put", params)
+		if !ok {
+			t.Logf("❌ %s PUT操作失败", targetNode.ID)
+		} else {
+			t.Logf("✅ %s PUT %s = %s -> %v", targetNode.ID, op.Key, op.Value, result)
+		}
+
+		// 每5个操作后打印一次当前状态
+		if (i+1)%5 == 0 {
+			t.Logf("--- 完成 %d 个操作，当前状态 ---", i+1)
+			printRaftStatus(t, "core4", core4, raftGroupName)
+		}
+
+		// 添加延迟
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// 等待操作完成
+	t.Log("等待操作完成...")
+	time.Sleep(20 * time.Second)
+
+	// 验证一致性
+	t.Log("=== 验证一致性 ===")
+	validateConsistency(t, []*Node{core1, core2, core3, core4, learner1, learner2, learner3, learner4}, raftGroupName)
+
+	// 清理
+	t.Log("清理资源...")
+	core1.Quit()
+	core2.Quit()
+	core3.Quit()
+	core4.Quit()
+	learner1.Quit()
+	learner2.Quit()
+	learner3.Quit()
+	learner4.Quit()
+
+	// 清理测试数据目录
+	os.RemoveAll("./test_raft_data")
+
+	t.Log("=== 8节点Raft测试完成 ===")
+}
+
+func CreateSimpleChannel(name string, node *Node, isClientChannel bool, addr string) {
+	if isClientChannel {
+		worker := NewKcpConnection(name, true, "", addr, nil,
+			defaultMaxFrameSize, defaultMaxInactiveSeconds,
+			defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
+		channel := NewChannelFull(name, node, worker)
+		worker.User = channel
+		node.AddChannel(channel)
+	} else {
+		worker := NewKcpConnection(name, false, addr, "", nil,
+			defaultMaxFrameSize, defaultMaxInactiveSeconds,
+			defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
+		channel := NewChannelFull(name, node, worker)
+		worker.User = channel
+		node.AddChannel(channel)
+	}
+}
+func (this *Node) CreateSimpleChannel(name string, isClientChannel bool, addr string) {
+	if isClientChannel {
+		worker := NewKcpConnection(name, true, "", addr, nil,
+			defaultMaxFrameSize, defaultMaxInactiveSeconds,
+			defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
+		channel := NewChannelFull(name, this, worker)
+		worker.User = channel
+		this.AddChannel(channel)
+	} else {
+		worker := NewKcpConnection(name, false, addr, "", nil,
+			defaultMaxFrameSize, defaultMaxInactiveSeconds,
+			defaultMaxSendQueueSize, defaultMaxConnectionsPerSec, defaultToken)
+		channel := NewChannelFull(name, this, worker)
+		worker.User = channel
+		this.AddChannel(channel)
+	}
+}
+
+// 测试操作结构
+type testOperation struct {
+	NodeID    string
+	OpType    string // put, delete, get
+	Key       string
+	Value     string
+	Timestamp time.Time
+}
+
+// 生成随机操作
+func generateRandomOperations(count int) []testOperation {
+	operations := make([]testOperation, 0, count)
+
+	// 只生成put操作
+	opType := "put"
+
+	// 生成随机操作
+	for i := 0; i < count; i++ {
+		op := testOperation{
+			NodeID:    fmt.Sprintf("node-%d", (i%8)+1),
+			OpType:    opType,
+			Key:       fmt.Sprintf("k%d", i),
+			Value:     fmt.Sprintf("v%d", i),
+			Timestamp: time.Now().Add(time.Duration(i) * time.Millisecond),
+		}
+		operations = append(operations, op)
+	}
+
+	return operations
+}
+
+// 打印Raft状态
+func printRaftStatus(t *testing.T, nodeName string, node *Node, groupName string) {
+	node.RaftManager.RaftStubsMutex.RLock()
+	raftClient, exists := node.RaftManager.RaftStubs[groupName]
+	node.RaftManager.RaftStubsMutex.RUnlock()
+
+	if exists {
+		raftClient.Mutex.Lock()
+		role := raftClient.Role
+		term := raftClient.CurrentTerm
+		raftClient.Mutex.Unlock()
+
+		t.Logf("%s: Raft角色=%v, 任期=%d", nodeName, role, term)
+	} else {
+		t.Logf("%s: Raft状态=Learner", nodeName)
+	}
+}
+
+// 验证一致性
+func validateConsistency(t *testing.T, nodes []*Node, groupName string) {
+	t.Log("=== 开始一致性验证 ===")
+
+	// 收集所有核心节点的Raft状态
+	coreNodeStates := make(map[string]*RaftClient)
+
+	for _, node := range nodes {
+		if len(node.ID) >= 4 && node.ID[:4] == "core" {
+			node.RaftManager.RaftStubsMutex.RLock()
+			if raftClient, exists := node.RaftManager.RaftStubs[groupName]; exists {
+				coreNodeStates[node.ID] = raftClient
+				t.Logf("✓ %s Raft状态已收集", node.ID)
+			} else {
+				t.Errorf("❌ %s 没有找到Raft组 %s", node.ID, groupName)
+			}
+			node.RaftManager.RaftStubsMutex.RUnlock()
+		}
+	}
+
+	if len(coreNodeStates) == 0 {
+		t.Fatal("❌ 没有找到任何核心节点的Raft状态")
+		return
+	}
+
+	// 打印每个节点的详细状态
+	printDetailedRaftStatus(t, coreNodeStates)
+
+	t.Log("✅ 一致性验证完成")
+}
+
+// 打印详细的Raft状态
+func printDetailedRaftStatus(t *testing.T, coreNodeStates map[string]*RaftClient) {
+	t.Log("=== 详细Raft状态 ===")
+
+	for nodeID, raftClient := range coreNodeStates {
+		t.Logf("\n--- %s 状态 ---", nodeID)
+
+		// 获取Raft状态
+		raftClient.Mutex.Lock()
+		role := raftClient.Role
+		term := raftClient.CurrentTerm
+		votedFor := raftClient.VotedFor
+		commitIndex := raftClient.CommitIndex
+		lastApplied := raftClient.LastApplied
+		logLength := len(raftClient.Log)
+		nextIndex := make(map[string]int64)
+		matchIndex := make(map[string]int64)
+		for k, v := range raftClient.NextIndex {
+			nextIndex[k] = v
+		}
+		for k, v := range raftClient.MatchIndex {
+			matchIndex[k] = v
+		}
+		raftClient.Mutex.Unlock()
+
+		// 打印基本状态
+		t.Logf("角色: %v", role)
+		t.Logf("任期: %d", term)
+		t.Logf("投票给: %s", votedFor)
+		t.Logf("CommitIndex: %d", commitIndex)
+		t.Logf("LastApplied: %d", lastApplied)
+		t.Logf("日志长度: %d", logLength)
+		t.Logf("NextIndex: %v", nextIndex)
+		t.Logf("MatchIndex: %v", matchIndex)
+
+		// 打印日志内容
+		if logLength > 0 {
+			t.Logf("日志内容:")
+			raftClient.Mutex.Lock()
+			for i, entry := range raftClient.Log {
+				t.Logf("  [%d] Term=%d, Index=%d, Command=%v", i, entry.Term, entry.Index, entry.Command)
+			}
+			raftClient.Mutex.Unlock()
+		} else {
+			t.Logf("日志内容: 空")
+		}
+
+		// 打印数据库内容
+		if raftClient.Storage != nil {
+			t.Logf("数据库内容:")
+			t.Logf("  数据库节点ID: %s", raftClient.Storage.NodeId)
+
+			// 读取数据库中的元数据
+			if dbTerm, dbVotedFor, dbCommitIndex, dbLastApplied, err := raftClient.Storage.LoadMeta(raftClient.Group); err == nil {
+				t.Logf("  数据库元数据:")
+				t.Logf("    Term: %d", dbTerm)
+				t.Logf("    VotedFor: %s", dbVotedFor)
+				t.Logf("    CommitIndex: %d", dbCommitIndex)
+				t.Logf("    LastApplied: %d", dbLastApplied)
+			} else {
+				t.Logf("  数据库元数据读取失败: %v", err)
+			}
+
+			// 读取数据库中的日志
+			if dbLogs, err := raftClient.Storage.LoadLogs(raftClient.Group); err == nil {
+				t.Logf("  数据库日志 (共%d条):", len(dbLogs))
+				for i, entry := range dbLogs {
+					t.Logf("    [%d] Term=%d, Index=%d, Command=%v", i, entry.Term, entry.Index, entry.Command)
+				}
+			} else {
+				t.Logf("  数据库日志读取失败: %v", err)
+			}
+		} else {
+			t.Logf("数据库: 无")
+		}
+	}
+}
+
+func TestRaft2(t *testing.T) {
+	// 清理之前的测试数据
+	os.RemoveAll("./test_raft_data")
+
+	t.Log("=== 开始8节点Raft测试 ===")
+
+	// 定义连接地址
+	inBetweenConn1 := "127.0.0.1:3001" // core1 <-> core2
+	inBetweenConn2 := "127.0.0.1:3002" // core2 <-> core3
+	inBetweenConn3 := "127.0.0.1:3003" // core3 <-> core4
+
+	// 创建8个节点
+	core1 := NewNode("core1")
+	core2 := NewNode("core2")
+	core3 := NewNode("core3")
+
+	// 建立核心节点之间的环状连接
+	t.Log("建立核心节点环状连接...")
+	core1.CreateSimpleChannel("c1->c2", false, inBetweenConn1) // core1 服务器
+	core2.CreateSimpleChannel("c2->c1", true, inBetweenConn1)  // core2 客户端
+
+	core2.CreateSimpleChannel("c2->c3", false, inBetweenConn2) // core2 服务器
+	core3.CreateSimpleChannel("c3->c2", true, inBetweenConn2)  // core3 客户端
+
+	core3.CreateSimpleChannel("c3->c1", false, inBetweenConn3) // core3 服务器
+	core1.CreateSimpleChannel("c1->c3", true, inBetweenConn3)  // core4 客户端
+
+	// 注册所有节点
+	t.Log("注册所有节点...")
+	core1.Register()
+	core2.Register()
+	core3.Register()
+
+	// 等待网络稳定
+	t.Log("等待网络稳定...")
+	time.Sleep(3 * time.Second)
+
+	// 打印网络状态
+	t.Log("=== 网络状态 ===")
+	t.Logf("core1 路由表大小: %d", len(core1.RoutingTable))
+	t.Logf("core2 路由表大小: %d", len(core2.RoutingTable))
+	t.Logf("core3 路由表大小: %d", len(core3.RoutingTable))
+
+	// 创建Raft组
+	raftGroupName := "test-raft-group"
+	peers := []string{"core1", "core2", "core3"}
+
+	t.Log("创建Raft组...")
+	// 核心节点创建Raft组
+	_, err := core1.RaftManager.CreateRaftGroup(raftGroupName, core1, peers, "./test_raft_data/test_group_core1")
+	if err != nil {
+		t.Fatalf("core1 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core1 创建Raft组成功")
+
+	_, err = core2.RaftManager.CreateRaftGroup(raftGroupName, core2, peers, "./test_raft_data/test_group_core2")
+	if err != nil {
+		t.Fatalf("core2 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core2 创建Raft组成功")
+
+	_, err = core3.RaftManager.CreateRaftGroup(raftGroupName, core3, peers, "./test_raft_data/test_group_core3")
+	if err != nil {
+		t.Fatalf("core3 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core3 创建Raft组成功")
+
+	// 等待Raft组稳定
+	t.Log("等待Raft组稳定...")
+	time.Sleep(20 * time.Second)
+
+	// 打印Raft状态
+	t.Log("=== Raft状态 ===")
+	printRaftStatus(t, "core1", core1, raftGroupName)
+	printRaftStatus(t, "core2", core2, raftGroupName)
+	printRaftStatus(t, "core3", core3, raftGroupName)
+
+	core1.Quit()
+	core2.Quit()
+	core3.Quit()
+
+	// 清理测试数据目录
+	os.RemoveAll("./test_raft_data")
+
+	t.Log("=== 8节点Raft测试完成 ===")
+}
+
+func TestRaft3(t *testing.T) {
+	// 清理之前的测试数据
+	os.RemoveAll("./test_raft_data")
+
+	t.Log("=== 开始8节点Raft测试 ===")
+
+	// 定义连接地址
+	inBetweenConn1 := "127.0.0.1:3001" // core1 <-> core2
+	inBetweenConn2 := "127.0.0.1:3002" // core2 <-> core3
+	inBetweenConn3 := "127.0.0.1:3003" // core3 <-> core4
+	inBetweenConn4 := "127.0.0.1:3004" // core3 <-> core4
+
+	// 创建8个节点
+	core1 := NewNode("core1")
+	core2 := NewNode("core2")
+	core3 := NewNode("core3")
+	core4 := NewNode("core4")
+
+	// 建立核心节点之间的环状连接
+	t.Log("建立核心节点环状连接...")
+	core1.CreateSimpleChannel("c1->c2", false, inBetweenConn1) // core1 服务器
+	core2.CreateSimpleChannel("c2->c1", true, inBetweenConn1)  // core2 客户端
+
+	core2.CreateSimpleChannel("c2->c3", false, inBetweenConn2) // core2 服务器
+	core3.CreateSimpleChannel("c3->c2", true, inBetweenConn2)  // core3 客户端
+
+	core3.CreateSimpleChannel("c3->c4", false, inBetweenConn3) // core3 服务器
+	core4.CreateSimpleChannel("c4->c3", true, inBetweenConn3)  // core4 客户端
+
+	core4.CreateSimpleChannel("c4->c1", false, inBetweenConn4) // core3 服务器
+	core1.CreateSimpleChannel("c1->c4", true, inBetweenConn4)  // core4 客户端
+
+	// 注册所有节点
+	t.Log("注册所有节点...")
+	core1.Register()
+	core2.Register()
+	core3.Register()
+	core4.Register()
+
+	// 等待网络稳定
+	t.Log("等待网络稳定...")
+	time.Sleep(3 * time.Second)
+
+	// 打印网络状态
+	t.Log("=== 网络状态 ===")
+	t.Logf("core1 路由表大小: %d", len(core1.RoutingTable))
+	t.Logf("core2 路由表大小: %d", len(core2.RoutingTable))
+	t.Logf("core3 路由表大小: %d", len(core3.RoutingTable))
+	t.Logf("core4 路由表大小: %d", len(core4.RoutingTable))
+
+	// 创建Raft组
+	raftGroupName := "test-raft-group"
+	peers := []string{"core1", "core2", "core3", "core4"}
+
+	t.Log("创建Raft组...")
+	// 核心节点创建Raft组
+	_, err := core1.RaftManager.CreateRaftGroup(raftGroupName, core1, peers, "./test_raft_data/test_group_core1")
+	if err != nil {
+		t.Fatalf("core1 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core1 创建Raft组成功")
+
+	_, err = core2.RaftManager.CreateRaftGroup(raftGroupName, core2, peers, "./test_raft_data/test_group_core2")
+	if err != nil {
+		t.Fatalf("core2 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core2 创建Raft组成功")
+
+	_, err = core3.RaftManager.CreateRaftGroup(raftGroupName, core3, peers, "./test_raft_data/test_group_core3")
+	if err != nil {
+		t.Fatalf("core3 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core3 创建Raft组成功")
+
+	_, err = core4.RaftManager.CreateRaftGroup(raftGroupName, core4, peers, "./test_raft_data/test_group_core4")
+	if err != nil {
+		t.Fatalf("core4 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core4 创建Raft组成功")
+
+	// 等待Raft组稳定
+	t.Log("等待Raft组稳定...")
+	time.Sleep(40 * time.Second)
+
+	// 打印Raft状态
+	t.Log("=== Raft状态 ===")
+	printRaftStatus(t, "core1", core1, raftGroupName)
+	printRaftStatus(t, "core2", core2, raftGroupName)
+	printRaftStatus(t, "core3", core3, raftGroupName)
+	printRaftStatus(t, "core4", core4, raftGroupName)
+
+	core1.Quit()
+	core2.Quit()
+	core3.Quit()
+	core4.Quit()
+
+	// 清理测试数据目录
+	os.RemoveAll("./test_raft_data")
+
+	t.Log("=== 8节点Raft测试完成 ===")
+}
+
+func TestRaft4(t *testing.T) {
+	// 清理之前的测试数据
+	os.RemoveAll("./test_raft_data")
+
+	t.Log("=== 开始8节点Raft测试 ===")
+
+	// 定义连接地址
+	inBetweenConn1 := "127.0.0.1:3001" // core1 <-> core2
+	inBetweenConn2 := "127.0.0.1:3002" // core2 <-> core3
+	inBetweenConn3 := "127.0.0.1:3003" // core3 <-> core4
+	inBetweenConn4 := "127.0.0.1:3004" // core4 <-> core1
+
+	outerConn1 := "127.0.0.1:3005" // core1 <-> learner1
+	outerConn2 := "127.0.0.1:3006" // core2 <-> learner2
+	outerConn3 := "127.0.0.1:3007" // core3 <-> learner3
+	outerConn4 := "127.0.0.1:3008" // core4 <-> learner4
+
+	// 创建8个节点
+	core1 := NewNode("core1")
+	core2 := NewNode("core2")
+	core3 := NewNode("core3")
+	core4 := NewNode("core4")
+
+	learner1 := NewNode("learner1")
+	learner2 := NewNode("learner2")
+	learner3 := NewNode("learner3")
+	learner4 := NewNode("learner4")
+
+	// 建立核心节点之间的环状连接
+	t.Log("建立核心节点环状连接...")
+	core1.CreateSimpleChannel("c1->c2", false, inBetweenConn1) // core1 服务器
+	core2.CreateSimpleChannel("c2->c1", true, inBetweenConn1)  // core2 客户端
+
+	core2.CreateSimpleChannel("c2->c3", false, inBetweenConn2) // core2 服务器
+	core3.CreateSimpleChannel("c3->c2", true, inBetweenConn2)  // core3 客户端
+
+	core3.CreateSimpleChannel("c3->c4", false, inBetweenConn3) // core3 服务器
+	core4.CreateSimpleChannel("c4->c3", true, inBetweenConn3)  // core4 客户端
+
+	core4.CreateSimpleChannel("c4->c1", false, inBetweenConn4) // core4 服务器
+	core1.CreateSimpleChannel("c1->c4", true, inBetweenConn4)  // core1 客户端
+
+	// 建立learner节点连接
+	t.Log("建立learner节点连接...")
+	core1.CreateSimpleChannel("c1->l1", false, outerConn1)   // core1 客户端
+	learner1.CreateSimpleChannel("l1->c1", true, outerConn1) // learner1 服务器
+
+	core2.CreateSimpleChannel("c2->l2", false, outerConn2)   // core2 客户端
+	learner2.CreateSimpleChannel("l2->c2", true, outerConn2) // learner2 服务器
+
+	core3.CreateSimpleChannel("c3->l3", false, outerConn3)   // core3 客户端
+	learner3.CreateSimpleChannel("l3->c3", true, outerConn3) // learner3 服务器
+
+	core4.CreateSimpleChannel("c4->l4", false, outerConn4)   // core4 客户端
+	learner4.CreateSimpleChannel("l4->c4", true, outerConn4) // learner4 服务器
+
+	// 注册所有节点
+	t.Log("注册所有节点...")
+	core1.Register()
+	core2.Register()
+	core3.Register()
+	core4.Register()
+	learner1.Register()
+	learner2.Register()
+	learner3.Register()
+	learner4.Register()
+
+	// 等待网络稳定
+	t.Log("等待网络稳定...")
+	time.Sleep(3 * time.Second)
+
+	// 打印网络状态
+	t.Log("=== 网络状态 ===")
+	t.Logf("core1 路由表大小: %d", len(core1.RoutingTable))
+	t.Logf("core2 路由表大小: %d", len(core2.RoutingTable))
+	t.Logf("core3 路由表大小: %d", len(core3.RoutingTable))
+	t.Logf("core4 路由表大小: %d", len(core4.RoutingTable))
+	t.Logf("learner1 路由表大小: %d", len(learner1.RoutingTable))
+	t.Logf("learner2 路由表大小: %d", len(learner2.RoutingTable))
+	t.Logf("learner3 路由表大小: %d", len(learner3.RoutingTable))
+	t.Logf("learner4 路由表大小: %d", len(learner4.RoutingTable))
+
+	// 创建Raft组
+	raftGroupName := "test-raft-group"
+	peers := []string{"core1", "core2", "core3", "core4"}
+
+	t.Log("创建Raft组...")
+	// 核心节点创建Raft组
+	_, err := core1.RaftManager.CreateRaftGroup(raftGroupName, core1, peers, "./test_raft_data/test_group_core1")
+	if err != nil {
+		t.Fatalf("core1 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core1 创建Raft组成功")
+
+	_, err = core2.RaftManager.CreateRaftGroup(raftGroupName, core2, peers, "./test_raft_data/test_group_core2")
+	if err != nil {
+		t.Fatalf("core2 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core2 创建Raft组成功")
+
+	_, err = core3.RaftManager.CreateRaftGroup(raftGroupName, core3, peers, "./test_raft_data/test_group_core3")
+	if err != nil {
+		t.Fatalf("core3 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core3 创建Raft组成功")
+
+	_, err = core4.RaftManager.CreateRaftGroup(raftGroupName, core4, peers, "./test_raft_data/test_group_core4")
+	if err != nil {
+		t.Fatalf("core4 创建Raft组失败: %v", err)
+	}
+	t.Log("✓ core4 创建Raft组成功")
+
+	time.Sleep(5 * time.Second)
+	// Learner节点加入Raft组
+	t.Log("✓ learner1 开始尝试加入Raft组")
+	err = learner1.RaftManager.JoinAsLearner(raftGroupName, learner1, "./test_raft_data/test_group_learner1")
+	if err != nil {
+		t.Fatalf("learner1 加入Raft组失败: %v", err)
+	}
+	t.Log("✓ learner1 加入Raft组成功")
+
+	// 等待Raft组稳定
+	t.Log("等待Raft组稳定...")
+	time.Sleep(10 * time.Second)
+
+	// 打印Raft状态
+	t.Log("=== Raft状态 ===")
+	printRaftStatus(t, "core1", core1, raftGroupName)
+	printRaftStatus(t, "core2", core2, raftGroupName)
+	printRaftStatus(t, "core3", core3, raftGroupName)
+	printRaftStatus(t, "core4", core4, raftGroupName)
+
+	// 清理
+	t.Log("清理资源...")
+	core1.Quit()
+	core2.Quit()
+	core3.Quit()
+	core4.Quit()
+	learner1.Quit()
+	learner2.Quit()
+	learner3.Quit()
+	learner4.Quit()
+
+	// 清理测试数据目录
+	os.RemoveAll("./test_raft_data")
+
+	t.Log("=== 8节点Raft测试完成 ===")
+}

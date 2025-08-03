@@ -98,6 +98,9 @@ func SetupRoutes(server *Server) *gin.Engine {
 	registerDualMethod(rg, "/elect/giveup", server.handleElectGiveUp, false)
 	registerDualMethod(rg, "/elect/leave", server.handleElectLeave, false)
 	registerDualMethod(rg, "/elect/status", server.handleElectStatus, false)
+	registerDualMethod(rg, "/raft/put", server.handleRaftPut, false)
+	registerDualMethod(rg, "/raft/delete", server.handleRaftDelete, false)
+	registerDualMethod(rg, "/raft/get", server.handleRaftGet, false)
 	return r
 }
 
@@ -653,6 +656,15 @@ func (s *Server) handlePackage(client *ClientConnection, pkg api.MajulaPackage) 
 		go s.handleLeaveElectionPackage(client, pkg)
 	case "GET_ELECTION_STATUS":
 		go s.handleGetElectionStatusPackage(client, pkg)
+
+	case "PUT_IN_GROUP":
+		go s.handlePutInGroupPackage(client, pkg)
+
+	case "DELETE_FROM_GROUP":
+		go s.handleDeleteFromGroupPackage(client, pkg)
+
+	case "GET_FROM_GROUP":
+		go s.handleGetFromGroupPackage(client, pkg)
 
 	default:
 
@@ -1535,4 +1547,203 @@ func (s *Server) handleGetElectionStatusPackage(client *ClientConnection, pkg ap
 		InvokeId: pkg.InvokeId,
 	}
 	s.SendToClient(client.ID, response)
+}
+
+// handlePutInGroupPackage 处理客户端请求向Raft组中写入键值对
+func (s *Server) handlePutInGroupPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	group, _ := pkg.Args["group"].(string)
+	key, _ := pkg.Args["key"].(string)
+	value, _ := pkg.Args["value"]
+
+	if group == "" || key == "" {
+		return
+	}
+
+	// 通过RPC调用Raft的put操作
+	result, ok := s.Node.MakeRpcRequest(s.Node.ID, "raft", "put", map[string]interface{}{
+		"group": group,
+		"key":   key,
+		"value": value,
+	})
+
+	// 发送结果给客户端
+	response := api.MajulaPackage{
+		Method:   "PUT_IN_GROUP_RESPONSE",
+		InvokeId: pkg.InvokeId,
+		Result:   result,
+	}
+	if !ok {
+		response.Result = map[string]interface{}{"error": "RPC call failed"}
+	}
+	s.SendToClient(client.ID, response)
+}
+
+// handleDeleteFromGroupPackage 处理客户端请求从Raft组中删除键
+func (s *Server) handleDeleteFromGroupPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	group, _ := pkg.Args["group"].(string)
+	key, _ := pkg.Args["key"].(string)
+
+	if group == "" || key == "" {
+		return
+	}
+
+	// 通过RPC调用Raft的delete操作
+	result, ok := s.Node.MakeRpcRequest(s.Node.ID, "raft", "delete", map[string]interface{}{
+		"group": group,
+		"key":   key,
+	})
+
+	// 发送结果给客户端
+	response := api.MajulaPackage{
+		Method:   "DELETE_FROM_GROUP_RESPONSE",
+		InvokeId: pkg.InvokeId,
+		Result:   result,
+	}
+	if !ok {
+		response.Result = map[string]interface{}{"error": "RPC call failed"}
+	}
+	s.SendToClient(client.ID, response)
+}
+
+// handleGetFromGroupPackage 处理客户端请求从Raft组中读取值
+func (s *Server) handleGetFromGroupPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	group, _ := pkg.Args["group"].(string)
+	key, _ := pkg.Args["key"].(string)
+
+	if group == "" || key == "" {
+		return
+	}
+
+	// 通过RPC调用Raft的get操作
+	result, ok := s.Node.MakeRpcRequest(s.Node.ID, "raft", "get", map[string]interface{}{
+		"group": group,
+		"key":   key,
+	})
+
+	// 发送结果给客户端
+	response := api.MajulaPackage{
+		Method:   "GET_FROM_GROUP_RESPONSE",
+		InvokeId: pkg.InvokeId,
+		Result:   result,
+	}
+	if !ok {
+		response.Result = map[string]interface{}{"error": "RPC call failed"}
+	}
+	s.SendToClient(client.ID, response)
+}
+
+// handleRaftPut HTTP处理器：向Raft组中写入键值对
+func (s *Server) handleRaftPut(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	group, _ := params["group"].(string)
+	key, _ := params["key"].(string)
+	value, _ := params["value"]
+
+	if group == "" || key == "" {
+		c.JSON(400, gin.H{"error": "group 和 key 不能为空"})
+		return
+	}
+
+	// 通过RPC调用Raft的put操作
+	result, ok := s.Node.MakeRpcRequest(s.Node.ID, "raft", "put", map[string]interface{}{
+		"group": group,
+		"key":   key,
+		"value": value,
+	})
+
+	if !ok {
+		c.JSON(500, gin.H{"error": "RPC调用失败"})
+		return
+	}
+
+	// 检查结果
+	if resultMap, ok := result.(map[string]interface{}); ok {
+		if errorMsg, hasError := resultMap["error"].(string); hasError {
+			c.JSON(500, gin.H{"error": errorMsg})
+			return
+		}
+	}
+
+	c.JSON(200, gin.H{
+		"status": "ok",
+		"result": result,
+		"group":  group,
+		"key":    key,
+	})
+}
+
+// handleRaftDelete HTTP处理器：从Raft组中删除键
+func (s *Server) handleRaftDelete(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	group, _ := params["group"].(string)
+	key, _ := params["key"].(string)
+
+	if group == "" || key == "" {
+		c.JSON(400, gin.H{"error": "group 和 key 不能为空"})
+		return
+	}
+
+	// 通过RPC调用Raft的delete操作
+	result, ok := s.Node.MakeRpcRequest(s.Node.ID, "raft", "delete", map[string]interface{}{
+		"group": group,
+		"key":   key,
+	})
+
+	if !ok {
+		c.JSON(500, gin.H{"error": "RPC调用失败"})
+		return
+	}
+
+	// 检查结果
+	if resultMap, ok := result.(map[string]interface{}); ok {
+		if errorMsg, hasError := resultMap["error"].(string); hasError {
+			c.JSON(500, gin.H{"error": errorMsg})
+			return
+		}
+	}
+
+	c.JSON(200, gin.H{
+		"status": "ok",
+		"result": result,
+		"group":  group,
+		"key":    key,
+	})
+}
+
+// handleRaftGet HTTP处理器：从Raft组中读取值
+func (s *Server) handleRaftGet(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	group, _ := params["group"].(string)
+	key, _ := params["key"].(string)
+
+	if group == "" || key == "" {
+		c.JSON(400, gin.H{"error": "group 和 key 不能为空"})
+		return
+	}
+
+	// 通过RPC调用Raft的get操作
+	result, ok := s.Node.MakeRpcRequest(s.Node.ID, "raft", "get", map[string]interface{}{
+		"group": group,
+		"key":   key,
+	})
+
+	if !ok {
+		c.JSON(500, gin.H{"error": "RPC调用失败"})
+		return
+	}
+
+	// 检查结果
+	if resultMap, ok := result.(map[string]interface{}); ok {
+		if errorMsg, hasError := resultMap["error"].(string); hasError {
+			c.JSON(500, gin.H{"error": errorMsg})
+			return
+		}
+	}
+
+	c.JSON(200, gin.H{
+		"status": "ok",
+		"result": result,
+		"group":  group,
+		"key":    key,
+	})
 }

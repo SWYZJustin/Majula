@@ -205,6 +205,48 @@ func (c *MajulaClient) handleMessage(msg MajulaPackage) {
 			c.Wrapper.Lock.Unlock()
 		}
 
+	case msg.Method == "PUT_IN_GROUP_RESPONSE" && msg.InvokeId != 0:
+		c.Wrapper.Lock.RLock()
+		ch, ok := c.Wrapper.RpcResult[msg.InvokeId]
+		c.Wrapper.Lock.RUnlock()
+		if ok {
+			select {
+			case ch <- msg.Result:
+			default:
+			}
+			c.Wrapper.Lock.Lock()
+			delete(c.Wrapper.RpcResult, msg.InvokeId)
+			c.Wrapper.Lock.Unlock()
+		}
+
+	case msg.Method == "DELETE_FROM_GROUP_RESPONSE" && msg.InvokeId != 0:
+		c.Wrapper.Lock.RLock()
+		ch, ok := c.Wrapper.RpcResult[msg.InvokeId]
+		c.Wrapper.Lock.RUnlock()
+		if ok {
+			select {
+			case ch <- msg.Result:
+			default:
+			}
+			c.Wrapper.Lock.Lock()
+			delete(c.Wrapper.RpcResult, msg.InvokeId)
+			c.Wrapper.Lock.Unlock()
+		}
+
+	case msg.Method == "GET_FROM_GROUP_RESPONSE" && msg.InvokeId != 0:
+		c.Wrapper.Lock.RLock()
+		ch, ok := c.Wrapper.RpcResult[msg.InvokeId]
+		c.Wrapper.Lock.RUnlock()
+		if ok {
+			select {
+			case ch <- msg.Result:
+			default:
+			}
+			c.Wrapper.Lock.Lock()
+			delete(c.Wrapper.RpcResult, msg.InvokeId)
+			c.Wrapper.Lock.Unlock()
+		}
+
 	case msg.Method == "PRIVATE_MESSAGE":
 		c.Wrapper.Lock.RLock()
 		handler, ok := c.Wrapper.SubFuncs["__private__"]
@@ -666,4 +708,90 @@ func (c *MajulaClient) GetElectionStatus(groupName string) {
 		Args:   args,
 	}
 	c.Send(pkg)
+}
+
+func (c *MajulaClient) PutInGroup(groupName string, key string, value interface{}, timeout time.Duration) (interface{}, bool) {
+	invokeId := atomic.AddInt64(&c.InvokeId, 1)
+	ch := make(chan interface{}, 1)
+
+	c.Wrapper.Lock.Lock()
+	c.Wrapper.RpcResult[invokeId] = ch
+	c.Wrapper.Lock.Unlock()
+
+	args := map[string]interface{}{}
+	if groupName != "" {
+		args["group"] = groupName
+	}
+	args["key"] = key
+	args["value"] = value
+
+	c.Send(MajulaPackage{
+		Method:   "PUT_IN_GROUP",
+		Args:     args,
+		InvokeId: invokeId,
+	})
+
+	select {
+	case res := <-ch:
+		return res, true
+	case <-time.After(timeout):
+		return nil, false
+	}
+}
+
+func (c *MajulaClient) DeleteFromGroup(groupName string, key string, timeout time.Duration) (interface{}, bool) {
+	invokeId := atomic.AddInt64(&c.InvokeId, 1)
+	ch := make(chan interface{}, 1)
+
+	c.Wrapper.Lock.Lock()
+	c.Wrapper.RpcResult[invokeId] = ch
+	c.Wrapper.Lock.Unlock()
+
+	args := map[string]interface{}{}
+	if groupName != "" {
+		args["group"] = groupName
+	}
+	args["key"] = key
+
+	c.Send(MajulaPackage{
+		Method:   "DELETE_FROM_GROUP",
+		Args:     args,
+		InvokeId: invokeId,
+	})
+
+	select {
+	case res := <-ch:
+		return res, true
+	case <-time.After(timeout):
+		return nil, false
+	}
+}
+
+// GetFromGroup 从Raft组中读取键值对，返回结果
+func (c *MajulaClient) GetFromGroup(groupName string, key string, timeout time.Duration) (interface{}, bool) {
+	invokeId := atomic.AddInt64(&c.InvokeId, 1)
+	ch := make(chan interface{}, 1)
+
+	c.Wrapper.Lock.Lock()
+	c.Wrapper.RpcResult[invokeId] = ch
+	c.Wrapper.Lock.Unlock()
+
+	args := map[string]interface{}{}
+	if groupName != "" {
+		args["group"] = groupName
+	}
+	args["key"] = key
+
+	c.Send(MajulaPackage{
+		Method:   "GET_FROM_GROUP",
+		Args:     args,
+		InvokeId: invokeId,
+	})
+
+	select {
+	case res := <-ch:
+		return res, true
+	case <-time.After(timeout):
+		return nil, false
+	}
 }

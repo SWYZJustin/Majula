@@ -2,11 +2,29 @@ package core
 
 import (
 	"Majula/common"
+	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
+)
+
+// Raft时间常量
+const (
+	// 选举相关
+	ELECTION_TIMEOUT_MIN = 2000 // 选举超时最小值（毫秒）
+	ELECTION_TIMEOUT_MAX = 3000 // 选举超时最大值（毫秒）
+
+	// 心跳相关
+	HEARTBEAT_INTERVAL = 200 // 心跳间隔（毫秒）
+
+	// 网络通信相关
+	REQUEST_VOTE_TIMEOUT = 1000 // RequestVote超时时间（毫秒）
+
+	// 主循环检查间隔
+	MAIN_LOOP_INTERVAL = 100 // 主循环检查间隔（毫秒）
 )
 
 // RaftRole 表示Raft节点的角色（Follower/Candidate/Leader）。
@@ -74,10 +92,16 @@ type RaftClient struct {
 	voteResult     map[string]bool
 	voteResultLock sync.Mutex
 
-	timerElection  *time.Timer
-	timerHeartbeat *time.Timer
-	timerMutex     sync.Mutex
-	LeaderHint     string
+	// 时间相关（模仿Elect.go的设计）
+	electionTimeout  int64 // 下次选举超时时间
+	heartbeatTimeout int64 // 下次心跳超时时间
+
+	// 控制
+	ctx     context.Context
+	cancel  context.CancelFunc
+	running int32 // 运行状态
+
+	LeaderHint string
 
 	Peers []string // 静态配置的核心节点
 
@@ -100,7 +124,12 @@ type RaftClient struct {
 func NewRaftClient(group string, node *Node, peers []string, dbPath string) *RaftClient {
 	storage, err := NewStorage(dbPath, node.ID)
 	if err != nil {
-		panic(err)
+		fmt.Printf("[Raft][%s] Failed to create storage: %v\n", node.ID, err)
+		// 使用内存存储作为fallback
+		storage = &Storage{
+			db:     nil,
+			NodeId: node.ID,
+		}
 	}
 
 	rc := &RaftClient{
@@ -128,11 +157,15 @@ func NewRaftClient(group string, node *Node, peers []string, dbPath string) *Raf
 	rc.LastApplied = lastApplied
 	rc.LoadLogs()
 
+	rc.Mutex.Lock()
+
 	if rc.CommitIndex > rc.LastApplied {
 		rc.applyLogToStateMachine()
 	}
+	rc.Mutex.Unlock()
 
-	rc.startElectionTimer()
+	rc.startMainLoop()
+	rc.resetElectionTimer()
 
 	return rc
 }
@@ -154,8 +187,6 @@ func (rc *RaftClient) persistLog() {
 // applyLogToStateMachine 将已提交日志应用到状态机，并持久化元数据。
 // 支持业务回调。
 func (rc *RaftClient) applyLogToStateMachine() {
-	rc.Mutex.Lock()
-	defer rc.Mutex.Unlock()
 
 	for rc.LastApplied < rc.CommitIndex {
 		rc.LastApplied++
@@ -213,7 +244,11 @@ func (rc *RaftClient) onRaftMessage(group, from, to string, content []byte) {
 	case ClientCommand:
 		var cmdPayload ClientForwardPayload
 		if err := common.UnmarshalAny(content, &cmdPayload); err == nil {
-			if rc.Role == Leader {
+			var curRole RaftRole
+			rc.Mutex.Lock()
+			curRole = rc.Role
+			rc.Mutex.Unlock()
+			if curRole == Leader {
 				rc.ProposeCommand(cmdPayload.Cmd)
 				return
 			}
@@ -303,6 +338,7 @@ func (rc *RaftClient) handleRequestVoteResponse(group, from, to string, payload 
 		rc.VotedFor = ""
 		rc.Role = Follower
 		rc.persistTermAndVote()
+		rc.resetElectionTimer()
 		return
 	}
 
@@ -346,6 +382,12 @@ func (rc *RaftClient) resetVoteResult() {
 
 // startElection 发起新一轮选举，向所有peer发送RequestVote。
 func (rc *RaftClient) startElection() {
+	rc.Mutex.Lock()
+	if rc.Role == Leader {
+		rc.Mutex.Unlock()
+		return
+	}
+	rc.Mutex.Unlock()
 	rc.resetVoteResult()
 	rc.Mutex.Lock()
 	rc.switchToCandidate()
@@ -353,19 +395,22 @@ func (rc *RaftClient) startElection() {
 	lastLogIndex, lastLogTerm := rc.getLastLogIndex()
 	rc.Mutex.Unlock()
 
+	fmt.Printf("[Raft][%s] 开始选举，term=%d\n", rc.ID, term)
+
 	payload := RaftPayload{
 		Type:         RequestVote,
 		Term:         term,
 		CandidateId:  rc.ID,
 		PrevLogIndex: lastLogIndex,
 		PrevLogTerm:  lastLogTerm,
+		Group:        rc.Group,
 	}
 	for _, peer := range rc.Peers {
 		if peer == rc.ID {
 			continue
 		}
 		go func(peer string) {
-			_, err := rc.sendWithInvokeId(peer, &payload, 200*time.Millisecond)
+			_, err := rc.sendWithInvokeId(peer, &payload, time.Duration(REQUEST_VOTE_TIMEOUT)*time.Millisecond)
 			if err != nil {
 				fmt.Printf("[Raft][%s] RequestVote to %s failed after retries: %v\n", rc.ID, peer, err)
 			}
@@ -401,12 +446,12 @@ func (rc *RaftClient) broadcastHeartbeat() {
 		if peer == rc.ID {
 			continue
 		}
-		rc.sendHeartbeat(peer, term, commitIdx)
+		go rc.sendHeartbeat(peer, term, commitIdx)
 	}
 
 	rc.Learners.Range(func(key, _ interface{}) bool {
 		learnerID := key.(string)
-		rc.sendHeartbeat(learnerID, term, commitIdx)
+		go rc.sendHeartbeat(learnerID, term, commitIdx)
 		return true
 	})
 }
@@ -429,10 +474,11 @@ func (rc *RaftClient) sendHeartbeat(nodeID string, term, commitIdx int64) {
 		PrevLogTerm:  prevLogTerm,
 		Entries:      []RaftLogEntry{},
 		LeaderCommit: commitIdx,
+		Group:        rc.Group,
 	}
 
 	payloadBytes, _ := common.MarshalAny(payload)
-	rc.sendToTarget(nodeID, string(payloadBytes))
+	go rc.sendToTarget(nodeID, string(payloadBytes))
 }
 
 // handleAppendEntries 处理Leader发来的AppendEntries日志复制/心跳请求。
@@ -441,8 +487,14 @@ func (rc *RaftClient) sendHeartbeat(nodeID string, term, commitIdx int64) {
 // to: 本节点ID
 // payload: 日志复制内容
 func (rc *RaftClient) handleAppendEntries(group, from, to string, payload *RaftPayload) {
+	fmt.Printf("[Raft][%s] 进入了handleAppendEntries\n",
+		rc.ID)
 	rc.Mutex.Lock()
-	defer rc.Mutex.Unlock()
+	defer func() {
+		rc.Mutex.Unlock()
+		fmt.Printf("[Raft][%s] 离开了了handleAppendEntries，不是这个问题\n",
+			rc.ID)
+	}()
 
 	isHeartbeat := len(payload.Entries) == 0
 	fmt.Printf("[Raft][%s] handleAppendEntries from=%s term=%d myTerm=%d entries=%d (heartbeat=%v)\n",
@@ -462,6 +514,7 @@ func (rc *RaftClient) handleAppendEntries(group, from, to string, payload *RaftP
 	lastIndex, _ := rc.getLastLogIndex()
 	if payload.PrevLogIndex > lastIndex {
 		rc.replyAppendEntries(payload.LeaderId, false, 0, lastIndex+1, payload.InvokeId)
+		rc.resetElectionTimer()
 		return
 	}
 
@@ -476,6 +529,7 @@ func (rc *RaftClient) handleAppendEntries(group, from, to string, payload *RaftP
 		_ = rc.Storage.DeleteLogsFrom(rc.Group, conflictIndex)
 
 		rc.replyAppendEntries(payload.LeaderId, false, conflictTerm, conflictIndex, payload.InvokeId)
+		rc.resetElectionTimer()
 		return
 	}
 
@@ -507,6 +561,7 @@ func (rc *RaftClient) handleAppendEntries(group, from, to string, payload *RaftP
 
 	lastIndex, _ = rc.getLastLogIndex()
 	rc.replyAppendEntries(payload.LeaderId, true, 0, lastIndex, payload.InvokeId)
+	rc.resetElectionTimer()
 }
 
 // replyAppendEntries 回复Leader的AppendEntries请求，返回复制结果和冲突信息。
@@ -525,6 +580,7 @@ func (rc *RaftClient) replyAppendEntries(leaderId string, success bool, conflict
 		ConflictIndex: conflictIndex,
 		CommitIndex:   lastIndex,
 		InvokeId:      invokeId,
+		Group:         rc.Group,
 	}
 	respBytes, _ := common.MarshalAny(resp)
 	rc.sendToTarget(leaderId, string(respBytes))
@@ -578,8 +634,9 @@ func (rc *RaftClient) handleAppendEntriesResponse(group, from, to string, payloa
 			rc.MatchIndex[from] = rc.NextIndex[from] - 1
 			rc.NextIndex[from] = rc.MatchIndex[from] + 1
 		}
-
+		//fmt.Printf("[Raft][%s] I reached to this step 1\n", rc.ID)
 		rc.advanceCommitIndex()
+		//fmt.Printf("[Raft][%s] I reached to this step 2\n", rc.ID)
 	} else {
 		if payload.ConflictTerm != 0 {
 			lastIndexOfTerm := rc.findLastIndexOfTerm(payload.ConflictTerm)
@@ -638,6 +695,7 @@ func (rc *RaftClient) sendAppendEntriesTo(peer string) {
 		PrevLogTerm:  prevLogTerm,
 		Entries:      entries,
 		LeaderCommit: commitIdx,
+		Group:        rc.Group,
 	}
 	go func(peer string, payload RaftPayload) {
 		_, err := rc.sendWithInvokeId(peer, &payload, 200*time.Millisecond)
@@ -649,8 +707,6 @@ func (rc *RaftClient) sendAppendEntriesTo(peer string) {
 
 // advanceCommitIndex 推进commitIndex并应用日志到状态机。
 func (rc *RaftClient) advanceCommitIndex() {
-	rc.Mutex.Lock()
-	defer rc.Mutex.Unlock()
 
 	matchIndexes := make([]int64, 0, len(rc.Peers))
 	lastIndex, _ := rc.getLastLogIndex()
@@ -763,10 +819,10 @@ func (rc *RaftClient) forwardToLeader(leaderId string, cmd RaftCommand, forwarde
 // cmd: RaftCommand
 func (rc *RaftClient) ProposeCommand(cmd RaftCommand) {
 	rc.Mutex.Lock()
-	defer rc.Mutex.Unlock()
 
 	if rc.Role != Leader {
 		fmt.Printf("[Raft][%s] Reject command, not leader\n", rc.ID)
+		rc.Mutex.Unlock()
 		return
 	}
 
@@ -776,99 +832,117 @@ func (rc *RaftClient) ProposeCommand(cmd RaftCommand) {
 		Term:    rc.CurrentTerm,
 		Command: cmd,
 	}
+
 	rc.Log = append(rc.Log, entry)
 	rc.persistLog()
 
+	// 准备好 peers 和 learners 的快照
+	peers := make([]string, 0, len(rc.Peers))
 	for _, peer := range rc.Peers {
-		if peer == rc.ID {
-			continue
+		if peer != rc.ID {
+			peers = append(peers, peer)
 		}
+	}
+
+	learners := []string{}
+	rc.Learners.Range(func(key, _ interface{}) bool {
+		learner := key.(string)
+		learners = append(learners, learner)
+		return true
+	})
+
+	// 状态修改完成，释放锁
+	rc.Mutex.Unlock()
+
+	// 异步发送 AppendEntries
+	for _, peer := range peers {
 		go rc.sendAppendEntriesTo(peer)
 	}
 
-	rc.Learners.Range(func(key, _ interface{}) bool {
-		learner := key.(string)
+	for _, learner := range learners {
 		go rc.sendAppendEntriesTo(learner)
-		return true
-	})
+	}
 }
+
+// startMainLoop 启动主循环（模仿Elect.go的设计）
+func (rc *RaftClient) startMainLoop() {
+	if !atomic.CompareAndSwapInt32(&rc.running, 0, 1) {
+		return // 已经在运行
+	}
+
+	rc.ctx, rc.cancel = context.WithCancel(context.Background())
+
+	go func() {
+		for {
+			select {
+			case <-rc.ctx.Done():
+				print("---------asaassds", rc.ID)
+				return
+			default:
+				rc.processTimers()
+				time.Sleep(time.Duration(MAIN_LOOP_INTERVAL) * time.Millisecond)
+			}
+		}
+	}()
+}
+
+// stopMainLoop 停止主循环
+func (rc *RaftClient) stopMainLoop() {
+	if atomic.CompareAndSwapInt32(&rc.running, 1, 0) {
+		if rc.cancel != nil {
+			rc.cancel()
+		}
+	}
+}
+
+func (rc *RaftClient) processTimers() {
+	var role RaftRole
+	var now, heartbeatTimeout, electionTimeout int64
+
+	// 仅用于读取共享状态
+	fmt.Printf("555555[Raft][%s] ddd\n", rc.ID)
+
+	rc.Mutex.Lock()
+	role = rc.Role
+	now = time.Now().UnixMilli()
+	heartbeatTimeout = rc.heartbeatTimeout
+	electionTimeout = rc.electionTimeout
+	rc.Mutex.Unlock()
+
+	fmt.Printf("[Raft][%s] processTimers: Role=%v, now=%d, heartbeatTimeout=%d, electionTimeout=%d\n",
+		rc.ID, role, now, heartbeatTimeout, electionTimeout)
+
+	if role != Leader && now+60000 < electionTimeout {
+		fmt.Printf("++++++[Raft][%s] lkjhflkjsdfklaflkaflkasdlkjas (now=%d, timeout=%d)\n",
+			rc.ID, now, electionTimeout)
+	}
+	if role != Leader && now >= electionTimeout {
+		fmt.Printf("[Raft][%s] >>> Election timeout! starting election (now=%d, timeout=%d)\n",
+			rc.ID, now, electionTimeout)
+		go rc.startElection()
+	}
+
+	if role == Leader && now >= heartbeatTimeout {
+		fmt.Printf("[Raft][%s] >>> Heartbeat timeout! broadcasting heartbeat (now=%d, next=%d)\n",
+			rc.ID, now, heartbeatTimeout)
+		go rc.broadcastHeartbeat()
+		rc.resetHeartbeatTimer()
+		fmt.Printf("[Raft][%s] <<< Heartbeat timer reset, next=%d\n", rc.ID, rc.heartbeatTimeout)
+	}
+}
+
+// resetElectionTimer 重置选举定时器
 func (rc *RaftClient) resetElectionTimer() {
-	rc.stopElectionTimer()
-	rc.startElectionTimer()
+	timeout := ELECTION_TIMEOUT_MIN + randInt(0, ELECTION_TIMEOUT_MAX-ELECTION_TIMEOUT_MIN)
+	rc.electionTimeout = time.Now().UnixMilli() + int64(timeout)
+	fmt.Printf("[Raft][%s] resetElectionTimer, timeout=%dms\n", rc.ID, timeout)
 }
 
-// startElectionTimer 启动选举定时器。
-func (rc *RaftClient) startElectionTimer() {
-	rc.timerMutex.Lock()
-	defer rc.timerMutex.Unlock()
-
-	if rc.timerElection != nil {
-		rc.timerElection.Stop()
-	}
-
-	timeout := time.Duration(300+randInt(0, 200)) * time.Millisecond
-	rc.timerElection = time.AfterFunc(timeout, func() {
-		rc.Mutex.Lock()
-		if rc.Role != Leader {
-			fmt.Printf("[Raft][%s] Election timeout, start election\n", rc.ID)
-			rc.Mutex.Unlock()
-			rc.startElection()
-		} else {
-			rc.Mutex.Unlock()
-		}
-	})
-	fmt.Printf("[Raft][%s] startElectionTimer, timeout=%v\n", rc.ID, timeout)
-}
-
-// stopElectionTimer 停止选举定时器。
-func (rc *RaftClient) stopElectionTimer() {
-	rc.timerMutex.Lock()
-	defer rc.timerMutex.Unlock()
-
-	if rc.timerElection != nil {
-		rc.timerElection.Stop()
-		rc.timerElection = nil
-	}
-}
-
+// resetHeartbeatTimer 重置心跳定时器
 func (rc *RaftClient) resetHeartbeatTimer() {
-	rc.stopHeartbeatTimer()
-	rc.startHeartbeatTimer()
-}
-
-// startHeartbeatTimer 启动心跳定时器。
-func (rc *RaftClient) startHeartbeatTimer() {
-	rc.timerMutex.Lock()
-	defer rc.timerMutex.Unlock()
-
-	if rc.timerHeartbeat != nil {
-		rc.timerHeartbeat.Stop()
-	}
-
-	interval := 100 * time.Millisecond
-	rc.timerHeartbeat = time.AfterFunc(interval, func() {
-		rc.Mutex.Lock()
-		if rc.Role == Leader {
-			fmt.Printf("[Raft][%s] Heartbeat timeout, broadcastHeartbeat\n", rc.ID)
-			rc.Mutex.Unlock()
-			rc.broadcastHeartbeat()
-			rc.resetHeartbeatTimer()
-		} else {
-			rc.Mutex.Unlock()
-		}
-	})
-	fmt.Printf("[Raft][%s] startHeartbeatTimer, interval=%v\n", rc.ID, interval)
-}
-
-// stopHeartbeatTimer 停止心跳定时器。
-func (rc *RaftClient) stopHeartbeatTimer() {
-	rc.timerMutex.Lock()
-	defer rc.timerMutex.Unlock()
-
-	if rc.timerHeartbeat != nil {
-		rc.timerHeartbeat.Stop()
-		rc.timerHeartbeat = nil
-	}
+	interval := HEARTBEAT_INTERVAL
+	rc.heartbeatTimeout = time.Now().UnixMilli() + int64(interval)
+	fmt.Printf("[Raft][%s] resetHeartbeatTimer, interval=%dms\n", rc.ID, interval)
 }
 
 func randInt(min, max int) int {
@@ -880,7 +954,6 @@ func randInt(min, max int) int {
 func (rc *RaftClient) hasMajorityVotes() bool {
 	rc.voteResultLock.Lock()
 	defer rc.voteResultLock.Unlock()
-
 	voteCount := 0
 	for _, granted := range rc.voteResult {
 		if granted {
@@ -951,6 +1024,7 @@ func (rc *RaftClient) sendToTarget(targetNode string, content string) {
 // 返回：响应RaftPayload, error
 func (rc *RaftClient) sendWithInvokeId(peer string, payload *RaftPayload, timeout time.Duration) (*RaftPayload, error) {
 	// 生成 invokeId
+	currentRole := rc.Role
 	invokeId := rc.invokeCounter.Add(1)
 	payload.InvokeId = invokeId
 
@@ -962,16 +1036,23 @@ func (rc *RaftClient) sendWithInvokeId(peer string, payload *RaftPayload, timeou
 	// 序列化并发送
 	data, _ := common.MarshalAny(payload)
 	for retries := 0; retries < 3; retries++ {
+		if rc.Role != currentRole {
+			return nil, fmt.Errorf("[Raft][%s] Role changed, stop retry", rc.ID)
+		}
 		rc.sendToTarget(peer, string(data))
 
 		select {
 		case resp := <-ch:
+			fmt.Println("---------------------This works!!! --------------------------------")
 			return resp, nil
 		case <-time.After(timeout):
+			if rc.Role != currentRole {
+				break
+			}
 			fmt.Printf("[Raft][%s] Timeout waiting for %s response, retry %d\n", rc.ID, peer, retries+1)
 		}
 	}
-	return nil, fmt.Errorf("[Raft][%s] No response from %s after retries", rc.ID, peer)
+	return nil, fmt.Errorf("[Raft][%s] No response from %s after retries or role change", rc.ID, peer)
 }
 
 func (rc *RaftClient) sendToAll(content string) {
@@ -979,7 +1060,7 @@ func (rc *RaftClient) sendToAll(content string) {
 		if peer == rc.ID {
 			continue
 		}
-		rc.sendToTarget(peer, content)
+		go rc.sendToTarget(peer, content)
 	}
 }
 
@@ -992,7 +1073,6 @@ func (rc *RaftClient) switchToFollower(term int64) {
 	rc.VotedFor = ""
 	rc.persistTermAndVote()
 
-	rc.stopHeartbeatTimer()
 	rc.resetElectionTimer()
 }
 
@@ -1003,8 +1083,8 @@ func (rc *RaftClient) switchToCandidate() {
 	rc.CurrentTerm++
 	rc.VotedFor = rc.ID
 	rc.persistTermAndVote()
+	rc.LeaderHint = ""
 
-	rc.stopHeartbeatTimer()
 	rc.resetElectionTimer()
 }
 
@@ -1012,9 +1092,18 @@ func (rc *RaftClient) switchToCandidate() {
 func (rc *RaftClient) switchToLeader() {
 	fmt.Printf("[Raft][%s] 切换到 Leader, term=%d\n", rc.ID, rc.CurrentTerm)
 	rc.Role = Leader
-
-	rc.stopElectionTimer()
+	rc.disableElectionTimer()
 	rc.resetHeartbeatTimer()
+
+	/*
+		rc.pending.Range(func(key, value interface{}) bool {
+			ch := value.(chan *RaftPayload)
+			close(ch)
+			rc.pending.Delete(key)
+			return true
+		})
+
+	*/
 
 	lastIndex, _ := rc.getLastLogIndex()
 
@@ -1035,6 +1124,7 @@ func (rc *RaftClient) switchToLeader() {
 		}
 		return true
 	})
+	go rc.broadcastHeartbeat()
 }
 
 // LoadLogs 从存储加载所有日志到内存。
@@ -1065,4 +1155,15 @@ func (rc *RaftClient) RemoveLearner(nodeID string) {
 		Key: nodeID,
 	}
 	rc.HandleClientRequest(cmd)
+}
+
+// Close 关闭RaftClient，停止主循环
+func (rc *RaftClient) Close() {
+	rc.stopMainLoop()
+}
+
+// disableElectionTimer 禁用选举定时器（用于成为Leader后）
+func (rc *RaftClient) disableElectionTimer() {
+	rc.electionTimeout = math.MaxInt64
+	fmt.Printf("[Raft][%s] election timer disabled\n", rc.ID)
 }
