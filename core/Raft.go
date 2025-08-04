@@ -60,7 +60,7 @@ const (
 	addLearnerWithSnapshot
 )
 
-// RaftClient 实现Raft协议的核心状态与主流程，负责选举、日志复制、状态机应用等。
+// RaftCore 实现Raft协议的核心状态与主流程，负责选举、日志复制、状态机应用等。
 // 主要字段：
 //   - ID: 本地client唯一标识
 //   - Group: 所属同步组ID
@@ -76,8 +76,8 @@ const (
 //   - ApplyCallback: 日志应用回调
 //   - 其余为定时器、锁、投票统计等
 //
-// 用法：每个group对应一个RaftClient实例，主流程与GroupSyncTable等解耦。
-type RaftClient struct {
+// 用法：每个group对应一个RaftCore实例，主流程与GroupSyncTable等解耦。
+type RaftCore struct {
 	ID             string
 	Group          string
 	Role           RaftRole
@@ -121,8 +121,8 @@ type RaftClient struct {
 // node: 所属Node
 // peers: 静态配置的核心节点ID列表
 // dbPath: LevelDB存储路径
-// 返回：*RaftClient
-func NewRaftClient(group string, node *Node, peers []string, dbPath string) *RaftClient {
+// 返回：*RaftCore
+func NewRaftClient(group string, node *Node, peers []string, dbPath string) *RaftCore {
 	storage, err := NewStorage(dbPath, node.ID)
 	if err != nil {
 		Error("Raft存储创建失败", "节点ID=", node.ID, "错误=", err)
@@ -133,7 +133,7 @@ func NewRaftClient(group string, node *Node, peers []string, dbPath string) *Raf
 		}
 	}
 
-	rc := &RaftClient{
+	rc := &RaftCore{
 		ID:          node.ID,
 		Group:       group,
 		Role:        Follower,
@@ -172,12 +172,12 @@ func NewRaftClient(group string, node *Node, peers []string, dbPath string) *Raf
 }
 
 // persistTermAndVote 持久化当前term和votedFor到存储。
-func (rc *RaftClient) persistTermAndVote() {
+func (rc *RaftCore) persistTermAndVote() {
 	_ = rc.Storage.SaveMeta(rc.Group, rc.CurrentTerm, rc.VotedFor, rc.CommitIndex, rc.LastApplied)
 }
 
 // persistLog 持久化最新一条日志到存储。
-func (rc *RaftClient) persistLog() {
+func (rc *RaftCore) persistLog() {
 	if len(rc.Log) == 0 {
 		return
 	}
@@ -187,7 +187,7 @@ func (rc *RaftClient) persistLog() {
 
 // applyLogToStateMachine 将已提交日志应用到状态机，并持久化元数据。
 // 支持业务回调。
-func (rc *RaftClient) applyLogToStateMachine() {
+func (rc *RaftCore) applyLogToStateMachine() {
 
 	for rc.LastApplied < rc.CommitIndex {
 		rc.LastApplied++
@@ -232,7 +232,7 @@ func (rc *RaftClient) applyLogToStateMachine() {
 // from: 发送方ID
 // to: 接收方ID
 // content: 消息内容（序列化的RaftPayload）
-func (rc *RaftClient) onRaftMessage(group, from, to string, content []byte) {
+func (rc *RaftCore) onRaftMessage(group, from, to string, content []byte) {
 	var payload RaftPayload
 	if err := common.UnmarshalAny(content, &payload); err != nil {
 		Error("Raft消息反序列化失败", "错误=", err)
@@ -283,7 +283,7 @@ func (rc *RaftClient) onRaftMessage(group, from, to string, content []byte) {
 // from: 请求方ID
 // to: 接收方ID
 // payload: 投票请求内容
-func (rc *RaftClient) handleRequestVote(group, from, to string, payload *RaftPayload) {
+func (rc *RaftCore) handleRequestVote(group, from, to string, payload *RaftPayload) {
 	rc.Mutex.Lock()
 	defer rc.Mutex.Unlock()
 	Debug("Raft处理投票请求", "节点ID=", rc.ID, "来源=", from, "请求任期=", payload.Term, "当前任期=", rc.CurrentTerm)
@@ -326,7 +326,7 @@ func (rc *RaftClient) handleRequestVote(group, from, to string, payload *RaftPay
 // from: 响应方ID
 // to: 接收方ID
 // payload: 响应内容
-func (rc *RaftClient) handleRequestVoteResponse(group, from, to string, payload *RaftPayload) {
+func (rc *RaftCore) handleRequestVoteResponse(group, from, to string, payload *RaftPayload) {
 	if ch, ok := rc.pending.Load(payload.InvokeId); ok {
 		ch.(chan *RaftPayload) <- payload
 		rc.pending.Delete(payload.InvokeId)
@@ -369,7 +369,7 @@ func (rc *RaftClient) handleRequestVoteResponse(group, from, to string, payload 
 
 // getLastLogIndex 获取本地日志的最后一条的index和term。
 // 返回：index, term
-func (rc *RaftClient) getLastLogIndex() (int64, int64) {
+func (rc *RaftCore) getLastLogIndex() (int64, int64) {
 	if len(rc.Log) == 0 {
 		return 0, 0
 	}
@@ -378,7 +378,7 @@ func (rc *RaftClient) getLastLogIndex() (int64, int64) {
 }
 
 // resetVoteResult 重置本地投票统计。
-func (rc *RaftClient) resetVoteResult() {
+func (rc *RaftCore) resetVoteResult() {
 	rc.voteResultLock.Lock()
 	defer rc.voteResultLock.Unlock()
 
@@ -388,7 +388,7 @@ func (rc *RaftClient) resetVoteResult() {
 }
 
 // startElection 发起新一轮选举，向所有peer发送RequestVote。
-func (rc *RaftClient) startElection() {
+func (rc *RaftCore) startElection() {
 	rc.Mutex.Lock()
 	if rc.Role == Leader {
 		rc.Mutex.Unlock()
@@ -427,7 +427,7 @@ func (rc *RaftClient) startElection() {
 }
 
 // recordVote 记录收到的投票结果。
-func (rc *RaftClient) recordVote(from string, granted bool) {
+func (rc *RaftCore) recordVote(from string, granted bool) {
 	rc.voteResultLock.Lock()
 	defer rc.voteResultLock.Unlock()
 	if rc.voteResult == nil {
@@ -437,12 +437,12 @@ func (rc *RaftClient) recordVote(from string, granted bool) {
 }
 
 // getAllPeers 获取所有静态配置的核心节点ID。
-func (rc *RaftClient) getAllPeers() []string {
+func (rc *RaftCore) getAllPeers() []string {
 	return rc.Peers
 }
 
 // broadcastHeartbeat 向所有节点和Learner广播心跳（AppendEntries）。
-func (rc *RaftClient) broadcastHeartbeat() {
+func (rc *RaftCore) broadcastHeartbeat() {
 	rc.Mutex.Lock()
 	term := rc.CurrentTerm
 	commitIdx := rc.CommitIndex
@@ -464,7 +464,7 @@ func (rc *RaftClient) broadcastHeartbeat() {
 }
 
 // sendHeartbeat 向指定节点发送心跳（AppendEntries）。
-func (rc *RaftClient) sendHeartbeat(nodeID string, term, commitIdx int64) {
+func (rc *RaftCore) sendHeartbeat(nodeID string, term, commitIdx int64) {
 	rc.Mutex.Lock()
 	prevLogIndex := rc.NextIndex[nodeID] - 1
 	prevLogTerm := int64(0)
@@ -493,7 +493,7 @@ func (rc *RaftClient) sendHeartbeat(nodeID string, term, commitIdx int64) {
 // from: LeaderID
 // to: 本节点ID
 // payload: 日志复制内容
-func (rc *RaftClient) handleAppendEntries(group, from, to string, payload *RaftPayload) {
+func (rc *RaftCore) handleAppendEntries(group, from, to string, payload *RaftPayload) {
 	rc.Mutex.Lock()
 	defer func() {
 		rc.Mutex.Unlock()
@@ -569,7 +569,7 @@ func (rc *RaftClient) handleAppendEntries(group, from, to string, payload *RaftP
 // success: 是否复制成功
 // conflictTerm/conflictIndex: 冲突日志的term和index
 // invokeId: 请求唯一标识
-func (rc *RaftClient) replyAppendEntries(leaderId string, success bool, conflictTerm, conflictIndex int64, invokeId uint64) {
+func (rc *RaftCore) replyAppendEntries(leaderId string, success bool, conflictTerm, conflictIndex int64, invokeId uint64) {
 	lastIndex, _ := rc.getLastLogIndex()
 	resp := RaftPayload{
 		Type:          AppendEntriesResponse,
@@ -590,7 +590,7 @@ func (rc *RaftClient) replyAppendEntries(leaderId string, success bool, conflict
 // prevLogIndex: 前置日志index
 // prevLogTerm: 前置日志term
 // 返回：是否匹配
-func (rc *RaftClient) checkLogMatch(prevLogIndex, prevLogTerm int64) bool {
+func (rc *RaftCore) checkLogMatch(prevLogIndex, prevLogTerm int64) bool {
 	if prevLogIndex == 0 {
 		return true
 	}
@@ -605,7 +605,7 @@ func (rc *RaftClient) checkLogMatch(prevLogIndex, prevLogTerm int64) bool {
 // from: 响应方ID
 // to: 接收方ID
 // payload: 响应内容
-func (rc *RaftClient) handleAppendEntriesResponse(group, from, to string, payload *RaftPayload) {
+func (rc *RaftCore) handleAppendEntriesResponse(group, from, to string, payload *RaftPayload) {
 	if ch, ok := rc.pending.Load(payload.InvokeId); ok {
 		ch.(chan *RaftPayload) <- payload
 		rc.pending.Delete(payload.InvokeId)
@@ -655,7 +655,7 @@ func (rc *RaftClient) handleAppendEntriesResponse(group, from, to string, payloa
 // findLastIndexOfTerm 查找本地日志中指定term的最后一个index。
 // term: 目标term
 // 返回：最后一个index
-func (rc *RaftClient) findLastIndexOfTerm(term int64) int64 {
+func (rc *RaftCore) findLastIndexOfTerm(term int64) int64 {
 	for i := int64(len(rc.Log)) - 1; i >= 0; i-- {
 		if rc.Log[i].Term == term {
 			return rc.Log[i].Index
@@ -666,7 +666,7 @@ func (rc *RaftClient) findLastIndexOfTerm(term int64) int64 {
 
 // sendAppendEntriesTo 立即向指定节点发送AppendEntries。
 // peer: 目标节点ID
-func (rc *RaftClient) sendAppendEntriesTo(peer string) {
+func (rc *RaftCore) sendAppendEntriesTo(peer string) {
 	rc.Mutex.Lock()
 	term := rc.CurrentTerm
 	nextIdx := rc.NextIndex[peer]
@@ -703,7 +703,7 @@ func (rc *RaftClient) sendAppendEntriesTo(peer string) {
 }
 
 // advanceCommitIndex 推进commitIndex并应用日志到状态机。
-func (rc *RaftClient) advanceCommitIndex() {
+func (rc *RaftCore) advanceCommitIndex() {
 
 	matchIndexes := make([]int64, 0, len(rc.Peers))
 	lastIndex, _ := rc.getLastLogIndex()
@@ -756,7 +756,7 @@ func quickSelect(arr []int64, k int) int64 {
 // lastLogIndex: 候选人最后日志index
 // lastLogTerm: 候选人最后日志term
 // 返回：是否最新
-func (rc *RaftClient) isUpToDate(lastLogIndex, lastLogTerm int64) bool {
+func (rc *RaftCore) isUpToDate(lastLogIndex, lastLogTerm int64) bool {
 	myLastIndex, myLastTerm := rc.getLastLogIndex()
 
 	if lastLogTerm > myLastTerm {
@@ -770,7 +770,7 @@ func (rc *RaftClient) isUpToDate(lastLogIndex, lastLogTerm int64) bool {
 
 // HandleClientRequest 处理业务层发来的写入请求。
 // cmd: RaftCommand结构体
-func (rc *RaftClient) HandleClientRequest(cmd RaftCommand) {
+func (rc *RaftCore) HandleClientRequest(cmd RaftCommand) {
 	rc.Mutex.Lock()
 	role := rc.Role
 	leaderHint := rc.LeaderHint
@@ -800,7 +800,7 @@ type ClientForwardPayload struct {
 // cmd: RaftCommand
 // forwarded: 是否已转发过
 // originId: 原始请求发起者ID
-func (rc *RaftClient) forwardToLeader(leaderId string, cmd RaftCommand, forwarded bool, originId string) {
+func (rc *RaftCore) forwardToLeader(leaderId string, cmd RaftCommand, forwarded bool, originId string) {
 	payload := ClientForwardPayload{
 		Type:      ClientCommand,
 		Cmd:       cmd,
@@ -814,7 +814,7 @@ func (rc *RaftClient) forwardToLeader(leaderId string, cmd RaftCommand, forwarde
 
 // ProposeCommand 由Leader发起，将命令追加到本地日志并同步到其他节点。
 // cmd: RaftCommand
-func (rc *RaftClient) ProposeCommand(cmd RaftCommand) {
+func (rc *RaftCore) ProposeCommand(cmd RaftCommand) {
 	rc.Mutex.Lock()
 
 	if rc.Role != Leader {
@@ -862,7 +862,7 @@ func (rc *RaftClient) ProposeCommand(cmd RaftCommand) {
 }
 
 // startMainLoop 启动主循环
-func (rc *RaftClient) startMainLoop() {
+func (rc *RaftCore) startMainLoop() {
 	if !atomic.CompareAndSwapInt32(&rc.running, 0, 1) {
 		return // 已经在运行
 	}
@@ -884,7 +884,7 @@ func (rc *RaftClient) startMainLoop() {
 }
 
 // stopMainLoop 停止主循环
-func (rc *RaftClient) stopMainLoop() {
+func (rc *RaftCore) stopMainLoop() {
 	if atomic.CompareAndSwapInt32(&rc.running, 1, 0) {
 		if rc.cancel != nil {
 			rc.cancel()
@@ -892,7 +892,7 @@ func (rc *RaftClient) stopMainLoop() {
 	}
 }
 
-func (rc *RaftClient) processTimers() {
+func (rc *RaftCore) processTimers() {
 	var role RaftRole
 	var now, heartbeatTimeout, electionTimeout int64
 
@@ -925,14 +925,14 @@ func (rc *RaftClient) processTimers() {
 }
 
 // resetElectionTimer 重置选举定时器
-func (rc *RaftClient) resetElectionTimer() {
+func (rc *RaftCore) resetElectionTimer() {
 	timeout := ELECTION_TIMEOUT_MIN + randInt(0, ELECTION_TIMEOUT_MAX-ELECTION_TIMEOUT_MIN)
 	rc.electionTimeout = time.Now().UnixMilli() + int64(timeout)
 	Debug("Raft重置选举定时器", "节点ID=", rc.ID, "超时时间=", timeout, "毫秒")
 }
 
 // resetHeartbeatTimer 重置心跳定时器
-func (rc *RaftClient) resetHeartbeatTimer() {
+func (rc *RaftCore) resetHeartbeatTimer() {
 	interval := HEARTBEAT_INTERVAL
 	rc.heartbeatTimeout = time.Now().UnixMilli() + int64(interval)
 	Debug("Raft重置心跳定时器", "节点ID=", rc.ID, "间隔时间=", interval, "毫秒")
@@ -944,7 +944,7 @@ func randInt(min, max int) int {
 
 // hasMajorityVotes 判断当前投票结果是否获得多数派。
 // 返回：是否过半
-func (rc *RaftClient) hasMajorityVotes() bool {
+func (rc *RaftCore) hasMajorityVotes() bool {
 	rc.voteResultLock.Lock()
 	defer rc.voteResultLock.Unlock()
 	voteCount := 0
@@ -999,7 +999,7 @@ type RaftPayload struct {
 // sendToTarget 发送消息到指定目标节点。
 // targetNode: 目标节点ID
 // content: 消息内容
-func (rc *RaftClient) sendToTarget(targetNode string, content string) {
+func (rc *RaftCore) sendToTarget(targetNode string, content string) {
 	Debug("Raft发送消息", "来源=", rc.ID, "目标=", targetNode, "内容=", content)
 	msg := &Message{
 		MessageData: MessageData{
@@ -1018,7 +1018,7 @@ func (rc *RaftClient) sendToTarget(targetNode string, content string) {
 // payload: RaftPayload
 // timeout: 超时时间
 // 返回：响应RaftPayload和错误信息
-func (rc *RaftClient) sendWithInvokeId(peer string, payload *RaftPayload, timeout time.Duration) (*RaftPayload, error) {
+func (rc *RaftCore) sendWithInvokeId(peer string, payload *RaftPayload, timeout time.Duration) (*RaftPayload, error) {
 	// 生成调用ID
 	currentRole := rc.Role
 	invokeId := rc.invokeCounter.Add(1)
@@ -1050,7 +1050,7 @@ func (rc *RaftClient) sendWithInvokeId(peer string, payload *RaftPayload, timeou
 	return nil, fmt.Errorf("[Raft][%s] No response from %s after retries or role change", rc.ID, peer)
 }
 
-func (rc *RaftClient) sendToAll(content string) {
+func (rc *RaftCore) sendToAll(content string) {
 	for _, peer := range rc.Peers {
 		if peer == rc.ID {
 			continue
@@ -1061,7 +1061,7 @@ func (rc *RaftClient) sendToAll(content string) {
 
 // switchToFollower 切换为Follower角色。
 // term: 新的term
-func (rc *RaftClient) switchToFollower(term int64) {
+func (rc *RaftCore) switchToFollower(term int64) {
 	Log("Raft切换到跟随者", "节点ID=", rc.ID, "任期=", term)
 	rc.CurrentTerm = term
 	rc.Role = Follower
@@ -1072,7 +1072,7 @@ func (rc *RaftClient) switchToFollower(term int64) {
 }
 
 // switchToCandidate 切换为Candidate角色并自增term。
-func (rc *RaftClient) switchToCandidate() {
+func (rc *RaftCore) switchToCandidate() {
 	Log("Raft切换到候选人", "节点ID=", rc.ID, "任期=", rc.CurrentTerm+1)
 	rc.Role = Candidate
 	rc.CurrentTerm++
@@ -1084,7 +1084,7 @@ func (rc *RaftClient) switchToCandidate() {
 }
 
 // switchToLeader 切换为Leader角色，初始化相关状态。
-func (rc *RaftClient) switchToLeader() {
+func (rc *RaftCore) switchToLeader() {
 	Log("Raft切换到领导者", "节点ID=", rc.ID, "任期=", rc.CurrentTerm)
 	rc.Role = Leader
 	rc.disableElectionTimer()
@@ -1113,7 +1113,7 @@ func (rc *RaftClient) switchToLeader() {
 }
 
 // LoadLogs 从存储加载所有日志到内存。
-func (rc *RaftClient) LoadLogs() {
+func (rc *RaftCore) LoadLogs() {
 	logs, err := rc.Storage.LoadLogs(rc.Group)
 	if err != nil {
 		Error("Raft加载日志失败", "节点ID=", rc.ID, "组=", rc.Group, "错误=", err)
@@ -1124,7 +1124,7 @@ func (rc *RaftClient) LoadLogs() {
 
 // AddLearner 添加一个Learner节点。
 // nodeID: Learner节点ID
-func (rc *RaftClient) AddLearner(nodeID string) {
+func (rc *RaftCore) AddLearner(nodeID string) {
 	cmd := RaftCommand{
 		Op:  addLearner,
 		Key: nodeID,
@@ -1136,7 +1136,7 @@ func (rc *RaftClient) AddLearner(nodeID string) {
 // nodeID: Learner节点ID
 // snapshotIndex: 快照对应的日志索引
 // snapshotTerm: 快照对应的日志任期
-func (rc *RaftClient) AddLearnerWithSnapshot(nodeID string, snapshotIndex, snapshotTerm int64) {
+func (rc *RaftCore) AddLearnerWithSnapshot(nodeID string, snapshotIndex, snapshotTerm int64) {
 	cmd := RaftCommand{
 		Op:            addLearnerWithSnapshot,
 		Key:           nodeID,
@@ -1148,7 +1148,7 @@ func (rc *RaftClient) AddLearnerWithSnapshot(nodeID string, snapshotIndex, snaps
 
 // RemoveLearner 移除一个Learner节点。
 // nodeID: Learner节点ID
-func (rc *RaftClient) RemoveLearner(nodeID string) {
+func (rc *RaftCore) RemoveLearner(nodeID string) {
 	cmd := RaftCommand{
 		Op:  removeLearner,
 		Key: nodeID,
@@ -1158,18 +1158,18 @@ func (rc *RaftClient) RemoveLearner(nodeID string) {
 
 // IsLearner 检查当前节点是否为Learner
 // 返回：是否为Learner
-func (rc *RaftClient) IsLearner() bool {
+func (rc *RaftCore) IsLearner() bool {
 	_, exists := rc.Learners.Load(rc.ID)
 	return exists
 }
 
 // Close 关闭RaftClient，停止主循环
-func (rc *RaftClient) Close() {
+func (rc *RaftCore) Close() {
 	rc.stopMainLoop()
 }
 
 // disableElectionTimer 禁用选举定时器（用于成为Leader后）
-func (rc *RaftClient) disableElectionTimer() {
+func (rc *RaftCore) disableElectionTimer() {
 	rc.electionTimeout = math.MaxInt64
 	Debug("Raft选举定时器已禁用", "节点ID=", rc.ID)
 }

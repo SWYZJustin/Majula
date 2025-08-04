@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// LearnerClient 实现Raft Learner角色，只接收日志，不参与投票和选举。
+// RaftLearner 实现Raft Learner角色，只接收日志，不参与投票和选举。
 // 主要字段：
 //   - ID: 本地client唯一标识
 //   - Group: 所属同步组ID
@@ -18,7 +18,7 @@ import (
 //   - 其余为锁、网络通信等
 //
 // 用法：每个group对应一个LearnerClient实例，用于只读场景。
-type LearnerClient struct {
+type RaftLearner struct {
 	ID          string         // 本地client唯一ID
 	Group       string         // 所属groupID
 	CurrentTerm int64          // 当前term
@@ -43,8 +43,8 @@ type LearnerClient struct {
 // group: 同步组ID
 // node: 所属Node
 // dbPath: LevelDB存储路径
-// 返回：*LearnerClient
-func NewLearnerClient(group string, node *Node, dbPath string) *LearnerClient {
+// 返回：*RaftLearner
+func NewLearnerClient(group string, node *Node, dbPath string) *RaftLearner {
 	storage, err := NewStorage(dbPath, node.ID)
 	if err != nil {
 		Error("Learner存储创建失败", "节点ID=", node.ID, "错误=", err)
@@ -55,7 +55,7 @@ func NewLearnerClient(group string, node *Node, dbPath string) *LearnerClient {
 		}
 	}
 
-	lc := &LearnerClient{
+	lc := &RaftLearner{
 		ID:          node.ID,
 		Group:       group,
 		CurrentTerm: 0,
@@ -86,7 +86,7 @@ func NewLearnerClient(group string, node *Node, dbPath string) *LearnerClient {
 // from: 发送方ID
 // to: 接收方ID
 // content: 消息内容（序列化的RaftPayload）
-func (lc *LearnerClient) onRaftMessage(group, from, to string, content []byte) {
+func (lc *RaftLearner) onRaftMessage(group, from, to string, content []byte) {
 	var payload RaftPayload
 	if err := common.UnmarshalAny(content, &payload); err != nil {
 		Error("Learner消息反序列化失败", "错误=", err)
@@ -105,7 +105,7 @@ func (lc *LearnerClient) onRaftMessage(group, from, to string, content []byte) {
 //  3. 追加新日志并持久化
 //  4. 推进commitIndex并应用日志到状态机
 //  5. 回复Leader复制结果
-func (lc *LearnerClient) handleAppendEntries(payload RaftPayload) {
+func (lc *RaftLearner) handleAppendEntries(payload RaftPayload) {
 	lc.Mutex.Lock()
 	defer lc.Mutex.Unlock()
 
@@ -178,7 +178,7 @@ func (lc *LearnerClient) handleAppendEntries(payload RaftPayload) {
 }
 
 // handleAppendEntriesForSnapshot 快照 Learner 的特殊处理逻辑
-func (lc *LearnerClient) handleAppendEntriesForSnapshot(payload RaftPayload) {
+func (lc *RaftLearner) handleAppendEntriesForSnapshot(payload RaftPayload) {
 	// 快照 Learner 的核心逻辑：
 	// 1. 状态机已经是最新的（通过快照同步）
 	// 2. 不需要检查日志连续性
@@ -232,7 +232,7 @@ func (lc *LearnerClient) handleAppendEntriesForSnapshot(payload RaftPayload) {
 // success: 是否复制成功
 // conflictTerm/conflictIndex: 冲突日志的term和index（用于加速回退）
 // invokeId: 请求唯一标识
-func (lc *LearnerClient) replyAppendEntries(leaderId string, success bool, conflictTerm, conflictIndex int64, invokeId uint64) {
+func (lc *RaftLearner) replyAppendEntries(leaderId string, success bool, conflictTerm, conflictIndex int64, invokeId uint64) {
 	lastIndex := int64(len(lc.Log))
 	resp := RaftPayload{
 		Type:          AppendEntriesResponse,
@@ -250,7 +250,7 @@ func (lc *LearnerClient) replyAppendEntries(leaderId string, success bool, confl
 
 // applyLogToStateMachine 将已提交日志应用到本地状态机，并持久化元数据。
 // 支持业务回调。
-func (lc *LearnerClient) applyLogToStateMachine() {
+func (lc *RaftLearner) applyLogToStateMachine() {
 	for lc.LastApplied < lc.CommitIndex {
 		lc.LastApplied++
 		entry := lc.Log[lc.LastApplied-1]
@@ -270,7 +270,7 @@ func (lc *LearnerClient) applyLogToStateMachine() {
 }
 
 // persistLog 持久化最新一条日志到存储。
-func (lc *LearnerClient) persistLog() {
+func (lc *RaftLearner) persistLog() {
 	if len(lc.Log) == 0 {
 		return
 	}
@@ -279,7 +279,7 @@ func (lc *LearnerClient) persistLog() {
 }
 
 // LoadLogs 从存储加载所有日志到内存。
-func (lc *LearnerClient) LoadLogs() {
+func (lc *RaftLearner) LoadLogs() {
 	logs, err := lc.Storage.LoadLogs(lc.Group)
 	if err != nil {
 		Error("Learner加载日志失败", "节点ID=", lc.ID, "组=", lc.Group, "错误=", err)
@@ -291,7 +291,7 @@ func (lc *LearnerClient) LoadLogs() {
 // sendToTarget 发送消息到指定目标节点。
 // targetNode: 目标节点ID
 // content: 消息内容
-func (lc *LearnerClient) sendToTarget(targetNode string, content string) {
+func (lc *RaftLearner) sendToTarget(targetNode string, content string) {
 	Debug("Learner发送消息", "来源=", lc.ID, "目标=", targetNode, "内容=", content)
 	msg := &Message{
 		MessageData: MessageData{

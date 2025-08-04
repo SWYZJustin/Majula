@@ -197,14 +197,14 @@ func (node *Node) handleRaftBundle(originalMsg *Message, group, payload string) 
 }
 
 // getRaftStub 获取指定组的Raft客户端
-func (node *Node) getRaftStub(group string) *RaftClient {
+func (node *Node) getRaftStub(group string) *RaftCore {
 	node.RaftManager.RaftStubsMutex.RLock()
 	defer node.RaftManager.RaftStubsMutex.RUnlock()
 	return node.RaftManager.RaftStubs[group]
 }
 
 // getLearnerStub 获取指定组的学习者客户端
-func (node *Node) getLearnerStub(group string) *LearnerClient {
+func (node *Node) getLearnerStub(group string) *RaftLearner {
 	node.RaftManager.LearnerStubsMutex.RLock()
 	defer node.RaftManager.LearnerStubsMutex.RUnlock()
 	return node.RaftManager.LearnerStubs[group]

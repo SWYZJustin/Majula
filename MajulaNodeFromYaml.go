@@ -175,8 +175,15 @@ func main() {
 		fmt.Printf("正在初始化信令客户端，连接到: %s\n", conf.SignalingServer.URL)
 
 		// 解析时间配置
-		reconnectInterval := parseDuration(conf.SignalingServer.ReconnectInterval)
-		heartbeatInterval := parseDuration(conf.SignalingServer.HeartbeatInterval)
+		reconnectInterval, err := time.ParseDuration(conf.SignalingServer.ReconnectInterval)
+		if err != nil {
+			log.Fatalf("解析 reconnect_interval 失败: %v", err)
+		}
+
+		heartbeatInterval, err := time.ParseDuration(conf.SignalingServer.HeartbeatInterval)
+		if err != nil {
+			log.Fatalf("解析 heartbeat_interval 失败: %v", err)
+		}
 
 		// 创建信令客户端配置
 		signalingConfig := &core.SignalingClientConfig{

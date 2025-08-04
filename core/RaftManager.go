@@ -8,12 +8,12 @@ import (
 // RaftManager 管理所有Raft组和学习者，负责创建、加入、移除等操作
 // RaftManager Raft管理器结构体，包含Raft组、学习者、对等节点等信息
 type RaftManager struct {
-	RaftGroup      []string               // Raft组列表
-	RaftStubs      map[string]*RaftClient // 组ID到Raft客户端的映射
-	RaftStubsMutex sync.RWMutex           // Raft存根互斥锁
+	RaftGroup      []string             // Raft组列表
+	RaftStubs      map[string]*RaftCore // 组ID到Raft客户端的映射
+	RaftStubsMutex sync.RWMutex         // Raft存根互斥锁
 
-	LearnerStubs      map[string]*LearnerClient // 学习者存根映射
-	LearnerStubsMutex sync.RWMutex              // 学习者存根互斥锁
+	LearnerStubs      map[string]*RaftLearner // 学习者存根映射
+	LearnerStubsMutex sync.RWMutex            // 学习者存根互斥锁
 
 	RaftPeers      map[string][]string // 组ID到对等节点列表的映射
 	RaftPeersMutex sync.RWMutex        // 对等节点互斥锁
@@ -23,9 +23,9 @@ type RaftManager struct {
 func NewRaftManager() *RaftManager {
 	return &RaftManager{
 		RaftGroup:         []string{},
-		RaftStubs:         map[string]*RaftClient{},
+		RaftStubs:         map[string]*RaftCore{},
 		RaftStubsMutex:    sync.RWMutex{},
-		LearnerStubs:      map[string]*LearnerClient{},
+		LearnerStubs:      map[string]*RaftLearner{},
 		LearnerStubsMutex: sync.RWMutex{},
 		RaftPeers:         make(map[string][]string),
 		RaftPeersMutex:    sync.RWMutex{},
@@ -35,7 +35,7 @@ func NewRaftManager() *RaftManager {
 // CreateRaftGroup 创建一个新的Raft组
 // 参数：group - 组名称，node - 本地节点，peers - 对等节点列表，dbPath - 数据库路径
 // 返回：Raft客户端指针和错误信息
-func (rm *RaftManager) CreateRaftGroup(group string, node *Node, peers []string, dbPath string) (*RaftClient, error) {
+func (rm *RaftManager) CreateRaftGroup(group string, node *Node, peers []string, dbPath string) (*RaftCore, error) {
 	rm.RaftStubsMutex.RLock()
 	_, exists := rm.RaftStubs[group]
 	rm.RaftStubsMutex.RUnlock()
@@ -61,7 +61,7 @@ func (rm *RaftManager) CreateRaftGroup(group string, node *Node, peers []string,
 // CreateLearner 创建一个新的学习者客户端
 // 参数：group - 组名称，node - 本地节点，dbPath - 数据库路径
 // 返回：学习者客户端指针和错误信息
-func (rm *RaftManager) CreateLearner(group string, node *Node, dbPath string) (*LearnerClient, error) {
+func (rm *RaftManager) CreateLearner(group string, node *Node, dbPath string) (*RaftLearner, error) {
 	rm.RaftPeersMutex.RLock()
 	peers, ok := rm.RaftPeers[group]
 	rm.RaftPeersMutex.RUnlock()
@@ -192,7 +192,7 @@ func (rm *RaftManager) LeaveAsLearner(group string, node *Node) error {
 // CreateLearnerWithFastSync 创建一个新的学习者客户端，使用状态机状态传输快速同步
 // 参数：group - 组名称，node - 本地节点，dbPath - 数据库路径
 // 返回：学习者客户端指针和错误信息
-func (rm *RaftManager) CreateLearnerWithFastSync(group string, node *Node, dbPath string) (*LearnerClient, error) {
+func (rm *RaftManager) CreateLearnerWithFastSync(group string, node *Node, dbPath string) (*RaftLearner, error) {
 	rm.RaftPeersMutex.RLock()
 	peers, ok := rm.RaftPeers[group]
 	rm.RaftPeersMutex.RUnlock()
@@ -308,7 +308,7 @@ func (rm *RaftManager) getStateSnapshotFromLeader(group string, node *Node, peer
 }
 
 // applyStateSnapshotToLearner 将状态机快照应用到Learner
-func (rm *RaftManager) applyStateSnapshotToLearner(lc *LearnerClient, snapshot map[string]interface{}) error {
+func (rm *RaftManager) applyStateSnapshotToLearner(lc *RaftLearner, snapshot map[string]interface{}) error {
 	// 这里需要调用本地RPC，因为Learner客户端还没有完全初始化
 	// 我们可以直接操作存储
 	if state, ok := snapshot["state"].(map[string]interface{}); ok {

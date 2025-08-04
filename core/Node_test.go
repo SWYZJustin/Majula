@@ -1398,7 +1398,7 @@ func validateConsistency(t *testing.T, nodes []*Node, groupName string) {
 	t.Log("=== 开始一致性验证 ===")
 
 	// 收集所有核心节点的Raft状态
-	coreNodeStates := make(map[string]*RaftClient)
+	coreNodeStates := make(map[string]*RaftCore)
 
 	for _, node := range nodes {
 		if len(node.ID) >= 4 && node.ID[:4] == "core" {
@@ -1425,7 +1425,7 @@ func validateConsistency(t *testing.T, nodes []*Node, groupName string) {
 }
 
 // 打印详细的Raft状态
-func printDetailedRaftStatus(t *testing.T, coreNodeStates map[string]*RaftClient) {
+func printDetailedRaftStatus(t *testing.T, coreNodeStates map[string]*RaftCore) {
 	t.Log("=== 详细Raft状态 ===")
 
 	for nodeID, raftClient := range coreNodeStates {

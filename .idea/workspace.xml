@@ -6,15 +6,12 @@
   <component name="ChangeListManager">
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/MajulaClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/MajulaClient.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/apis.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/apis.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/MajulaNodeFromYaml.go" beforeDir="false" afterPath="$PROJECT_DIR$/MajulaNodeFromYaml.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Learner.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Learner.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/MajulaServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/MajulaServer.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RPC.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node_test.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Raft.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/RaftManager.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftManager.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/RaftStorage.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftStorage.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/RaftSub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftSub.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
