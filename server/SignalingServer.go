@@ -1,9 +1,9 @@
 package server
 
 import (
+	"Majula/core"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -17,7 +17,7 @@ import (
 type NodeInfo struct {
 	ID       string    `json:"id"`        // 节点唯一标识
 	Name     string    `json:"name"`      // 节点名称
-	Status   string    `json:"status"`    // 节点状态: online, offline
+	Status   string    `json:"status"`    // 节点状态：在线、离线
 	LastSeen time.Time `json:"last_seen"` // 最后活跃时间
 }
 
@@ -155,7 +155,7 @@ func (s *SignalingServer) Start() error {
 	s.startCleanupTimer()
 
 	addr := fmt.Sprintf(":%d", s.config.Port)
-	log.Printf("Signaling server starting on %s (UDP on port %d)", addr, s.udpPort)
+	core.Log("信令服务器启动", "地址=", addr, "UDP端口=", s.udpPort)
 	return s.router.Run(addr)
 }
 
@@ -171,7 +171,7 @@ func (s *SignalingServer) startUDPListener() error {
 		return fmt.Errorf("failed to start UDP listener: %v", err)
 	}
 
-	log.Printf("UDP listener started on port %d", s.udpPort)
+	core.Log("UDP监听器启动", "端口=", s.udpPort)
 
 	// 启动UDP消息处理协程
 	go s.handleUDPMessages()
@@ -198,7 +198,7 @@ func (s *SignalingServer) cleanupOfflineNodes() {
 	for nodeID, node := range s.nodes {
 		if node.Status == "offline" && now.Sub(node.LastSeen) > 5*time.Minute {
 			delete(s.nodes, nodeID)
-			log.Printf("Cleaned up offline node: %s", nodeID)
+			core.Log("清理离线节点", "节点ID=", nodeID)
 		}
 	}
 }
@@ -210,17 +210,17 @@ func (s *SignalingServer) handleUDPMessages() {
 	for {
 		n, remoteAddr, err := s.udpListener.ReadFromUDP(buffer)
 		if err != nil {
-			log.Printf("UDP read error: %v", err)
+			core.Error("UDP读取错误", "错误=", err)
 			continue
 		}
 
 		message := string(buffer[:n])
-		log.Printf("Received UDP message from %s: %s", remoteAddr.String(), message)
+		core.Log("收到UDP消息", "来源地址=", remoteAddr.String(), "消息=", message)
 
 		// 解析消息
 		var request PublicAddressRequest
 		if err := json.Unmarshal(buffer[:n], &request); err != nil {
-			log.Printf("Failed to unmarshal UDP message: %v", err)
+			core.Error("UDP消息反序列化失败", "错误=", err)
 			continue
 		}
 
@@ -231,7 +231,7 @@ func (s *SignalingServer) handleUDPMessages() {
 
 // handleUDPPublicAddressRequest 处理UDP公网地址检测请求
 func (s *SignalingServer) handleUDPPublicAddressRequest(request PublicAddressRequest, remoteAddr *net.UDPAddr) {
-	log.Printf("Processing UDP public address request for node %s from %s", request.NodeID, remoteAddr.String())
+	core.Log("处理UDP公网地址请求", "节点ID=", request.NodeID, "来源地址=", remoteAddr.String())
 
 	// 提取公网地址
 	publicIP := remoteAddr.IP.String()
@@ -250,24 +250,24 @@ func (s *SignalingServer) handleUDPPublicAddressRequest(request PublicAddressReq
 	// 发送响应
 	responseData, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("Failed to marshal UDP response: %v", err)
+		core.Error("UDP响应序列化失败", "错误=", err)
 		return
 	}
 
 	_, err = s.udpListener.WriteToUDP(responseData, remoteAddr)
 	if err != nil {
-		log.Printf("Failed to send UDP response: %v", err)
+		core.Error("UDP响应发送失败", "错误=", err)
 		return
 	}
 
-	log.Printf("Sent UDP response to %s: public address %s", remoteAddr.String(), response.PublicAddr)
+	core.Log("发送UDP响应", "目标地址=", remoteAddr.String(), "公网地址=", response.PublicAddr)
 }
 
 // handleWebSocketGin 处理WebSocket连接
 func (s *SignalingServer) handleWebSocketGin(c *gin.Context) {
 	conn, err := s.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade failed: %v", err)
+		core.Error("WebSocket升级失败", "错误=", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "WebSocket upgrade failed"})
 		return
 	}
@@ -298,7 +298,7 @@ func (s *SignalingServer) handleConnection(conn *websocket.Conn) {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket read error: %v", err)
+				core.Error("WebSocket读取错误", "错误=", err)
 			}
 			break
 		}
@@ -306,13 +306,13 @@ func (s *SignalingServer) handleConnection(conn *websocket.Conn) {
 		// 解析消息
 		var msg SignalingMessage
 		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("Failed to unmarshal message: %v", err)
+			core.Error("消息反序列化失败", "错误=", err)
 			continue
 		}
 
 		// 处理消息
 		if err := s.processMessage(conn, &msg); err != nil {
-			log.Printf("Failed to process message: %v", err)
+			core.Error("消息处理失败", "错误=", err)
 		}
 	}
 }
@@ -356,7 +356,7 @@ func (s *SignalingServer) handleRegister(conn *websocket.Conn, msg *SignalingMes
 	s.connections[nodeID] = conn
 	s.mu.Unlock()
 
-	log.Printf("Node registered: %s (%s)", nodeID, name)
+	core.Log("节点已注册", "节点ID=", nodeID, "节点名称=", name)
 
 	// 发送注册成功响应
 	response := &SignalingMessage{
@@ -406,7 +406,7 @@ func (s *SignalingServer) handleRequestKCPConnection(conn *websocket.Conn, msg *
 		return fmt.Errorf("missing invoke_id in request_kcp_connection message")
 	}
 
-	log.Printf("Processing KCP connection request from %s to %s (invoke_id: %s)", fromNodeID, toNodeID, invokeID)
+	core.Log("处理KCP连接请求", "来源节点=", fromNodeID, "目标节点=", toNodeID, "调用ID=", invokeID)
 
 	// 检查目标节点是否在线
 	s.mu.RLock()
@@ -455,7 +455,7 @@ func (s *SignalingServer) handleKCPConnectionResponse(conn *websocket.Conn, msg 
 	s.mu.RUnlock()
 
 	if !exists {
-		log.Printf("Initiator node %s not found for invoke_id: %s", fromNodeID, invokeID)
+		core.Error("发起方节点未找到", "节点ID=", fromNodeID, "调用ID=", invokeID)
 		return nil
 	}
 
@@ -468,7 +468,7 @@ func (s *SignalingServer) handleKCPConnectionResponse(conn *websocket.Conn, msg 
 		Timestamp: time.Now(),
 	}
 
-	log.Printf("Forwarding KCP connection response for invoke_id %s from %s", invokeID, fromNodeID)
+	core.Log("转发KCP连接响应", "调用ID=", invokeID, "来源节点=", fromNodeID)
 
 	return s.sendMessage(initiatorConn, response)
 }
@@ -485,7 +485,7 @@ func (s *SignalingServer) handleDisconnect(conn *websocket.Conn, msg *SignalingM
 	delete(s.connections, nodeID)
 	s.mu.Unlock()
 
-	log.Printf("Node disconnected: %s", nodeID)
+	core.Log("节点断开连接", "节点ID=", nodeID)
 	return nil
 }
 
@@ -528,7 +528,7 @@ func (s *SignalingServer) cleanupDisconnectedConnections(conn *websocket.Conn) {
 				node.LastSeen = time.Now()
 			}
 			delete(s.connections, nodeID)
-			log.Printf("Cleaned up disconnected node: %s", nodeID)
+			core.Log("清理断开连接的节点", "节点ID=", nodeID)
 			break
 		}
 	}

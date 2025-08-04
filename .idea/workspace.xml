@@ -7,16 +7,27 @@
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/MajulaClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/MajulaClient.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/apis.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/apis.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/common/Marshal.go" beforeDir="false" afterPath="$PROJECT_DIR$/common/Marshal.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Channel.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Channel.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/ChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/ChannelWorker.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Elect.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Elect.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/FRPStreamStub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStreamStub.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/FRPStubManager.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStubManager.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/KCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/KCPChannelWorker.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Learner.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Learner.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Link.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Link.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/MajulaServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/MajulaServer.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Message.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Message.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Nginx.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Nginx.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Node_test.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node_test.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RPC.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Raft.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/RaftManager.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftManager.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/RaftStorage.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftStorage.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/RaftSub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftSub.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/SignalingClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/SignalingClient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/TCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TCPChannelWorker.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/Tools.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Tools.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/SignalingServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/server/SignalingServer.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -102,8 +113,8 @@
       <recent name="E:\GolangProjects\Majula\common" />
     </key>
   </component>
-  <component name="RunManager" selected="Go Test.TestRaft in Majula/core (1)">
-    <configuration name="TestRaft in Majula/core (1)" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+  <component name="RunManager" selected="Go Test.TestKcpDynamicTunnel in Majula/core">
+    <configuration name="TestKcpDynamicTunnel in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="Majula" />
       <working_directory value="$PROJECT_DIR$/core" />
       <root_directory value="$PROJECT_DIR$" />
@@ -112,10 +123,10 @@
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$" />
       <framework value="gotest" />
-      <pattern value="^\QTestRaft\E$" />
+      <pattern value="^\QTestKcpDynamicTunnel\E$" />
       <method v="2" />
     </configuration>
-    <configuration name="TestRaft in Majula/core" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+    <configuration name="TestRaft in Majula/core (1)" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
       <module name="Majula" />
       <working_directory value="$PROJECT_DIR$/core" />
       <root_directory value="$PROJECT_DIR$" />
@@ -165,11 +176,11 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Go Test.TestKcpDynamicTunnel in Majula/core" />
         <item itemvalue="Go Test.TestRaft in Majula/core (1)" />
         <item itemvalue="Go Test.TestRaft4 in Majula/core" />
         <item itemvalue="Go Test.TestRaft3 in Majula/core" />
         <item itemvalue="Go Test.TestRaft2 in Majula/core" />
-        <item itemvalue="Go Test.TestRaft in Majula/core" />
       </list>
     </recent_temporary>
   </component>

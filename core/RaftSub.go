@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-// RaftSubscriptionInfo 记录节点已加入的 Raft group 信息
+// RaftSubscriptionInfo 记录节点已加入的Raft组信息
 type RaftSubscriptionInfo struct {
 	NodeID     string   `json:"node_id"`     // 节点ID
-	RaftGroups []string `json:"raft_groups"` // 加入的 Raft group 列表
+	RaftGroups []string `json:"raft_groups"` // 加入的Raft组列表
 }
 
-// floodRaftGroupInfo 洪泛本节点已加入的所有 Raft group 信息到全网
+// floodRaftGroupInfo 洪泛本节点已加入的所有Raft组信息到全网
 func (node *Node) floodRaftGroupInfo() {
 	node.RaftManager.RaftStubsMutex.RLock()
 	groups := node.RaftManager.RaftGroup
@@ -47,12 +47,12 @@ func (node *Node) floodRaftGroupInfo() {
 	}
 }
 
-// handleRaftSubscribeFlood 处理收到的 Raft group 洪泛消息，自动补全 group 的 peers
+// handleRaftSubscribeFlood 处理收到的Raft组洪泛消息，自动补全组的对等节点
 // 参数：msg - 洪泛消息
 func (node *Node) handleRaftSubscribeFlood(msg *Message) {
 	var info RaftSubscriptionInfo
 	if err := common.UnmarshalAny([]byte(msg.MessageData.Data), &info); err != nil {
-		node.DebugPrint("handleRaftSubscribeFlood", "invalid payload")
+		node.DebugPrint("handleRaftSubscribeFlood", "无效载荷")
 		return
 	}
 
@@ -82,7 +82,7 @@ func (node *Node) handleRaftSubscribeFlood(msg *Message) {
 	}
 }
 
-// startRaftSubscriptionFloodLoop 定时洪泛本节点 Raft group 信息
+// startRaftSubscriptionFloodLoop 定时洪泛本节点Raft组信息
 func (node *Node) startRaftSubscriptionFloodLoop() {
 	ticker := time.NewTicker(common.SubscribeFloodTicket)
 	defer ticker.Stop()
@@ -96,21 +96,21 @@ func (node *Node) startRaftSubscriptionFloodLoop() {
 	}
 }
 
-// PrintRaftGroups 打印当前已知的所有 Raft group 及其 peers
+// PrintRaftGroups 打印当前已知的所有Raft组及其对等节点
 func (node *Node) PrintRaftGroups() {
 	node.RaftManager.RaftPeersMutex.RLock()
 	defer node.RaftManager.RaftPeersMutex.RUnlock()
 
-	fmt.Printf("\n[%s] 当前已知 Raft 组:\n", node.ID)
+	Log("当前已知Raft组", "节点ID=", node.ID)
 	for group, peers := range node.RaftManager.RaftPeers {
-		fmt.Printf("  Group '%s': %v\n", group, peers)
+		Log("Raft组信息", "组名=", group, "对等节点=", peers)
 	}
 }
 
-// publishOnRaftTopic 向指定 group 的所有节点发布消息
-// 参数：group - 目标 group，pMessage - 消息内容
+// publishOnRaftTopic 向指定组的所有节点发布消息
+// 参数：group - 目标组，pMessage - 消息内容
 func (node *Node) publishOnRaftTopic(group string, pMessage string) {
-	node.DebugPrint("publishOnRaftTopic", fmt.Sprintf("group=%s msg=%s", group, pMessage))
+	node.DebugPrint("publishOnRaftTopic", fmt.Sprintf("组=%s 消息=%s", group, pMessage))
 
 	// 1. 本地处理：检查是否在本地组中
 	if stub := node.getRaftStub(group); stub != nil {
@@ -167,8 +167,8 @@ func (node *Node) publishOnRaftTopic(group string, pMessage string) {
 	}
 }
 
-// handleRaftBundle 处理 Raft group 的 bundle 消息转发
-// 参数：originalMsg - 原始消息，group - 目标 group，payload - 消息内容
+// handleRaftBundle 处理Raft组的捆绑消息转发
+// 参数：originalMsg - 原始消息，group - 目标组，payload - 消息内容
 func (node *Node) handleRaftBundle(originalMsg *Message, group, payload string) {
 	newBundle := map[string][]string{}
 
@@ -196,14 +196,14 @@ func (node *Node) handleRaftBundle(originalMsg *Message, group, payload string) 
 	}
 }
 
-// getRaftStub 获取指定 group 的 RaftClient
+// getRaftStub 获取指定组的Raft客户端
 func (node *Node) getRaftStub(group string) *RaftClient {
 	node.RaftManager.RaftStubsMutex.RLock()
 	defer node.RaftManager.RaftStubsMutex.RUnlock()
 	return node.RaftManager.RaftStubs[group]
 }
 
-// getLearnerStub 获取指定 group 的 LearnerClient
+// getLearnerStub 获取指定组的学习者客户端
 func (node *Node) getLearnerStub(group string) *LearnerClient {
 	node.RaftManager.LearnerStubsMutex.RLock()
 	defer node.RaftManager.LearnerStubsMutex.RUnlock()

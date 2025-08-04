@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -26,7 +25,7 @@ type HTTPProxyDefine struct {
 	Args       map[string]string `json:"args,omitempty"`
 }
 
-// SubKey 生成proxy的参数subkey，用于精确查找。
+// SubKey 生成代理的参数子键，用于精确查找。
 // 返回：参数子键字符串。
 func (h *HTTPProxyDefine) SubKey() string {
 	if h.Args == nil || len(h.Args) == 0 {
@@ -76,7 +75,7 @@ func (this *Node) RemoveHttpProxy(tpd HTTPProxyDefine) *HTTPProxyDefine {
 	return stub
 }
 
-// FindHttpProxy 根据url查找最匹配的HTTP代理。
+// FindHttpProxy 根据URL查找最匹配的HTTP代理。
 // 参数：url - 目标URL。
 // 返回：最匹配的HTTP代理定义指针。
 func (this *Node) FindHttpProxy(url *url.URL) *HTTPProxyDefine {
@@ -297,13 +296,7 @@ func (s *Server) ReverseProxy() gin.HandlerFunc {
 				}
 				req.URL.RawQuery = query.Encode()
 
-				log.Printf("[ReverseProxy] Final Request: %s %s://%s%s?%s",
-					req.Method,
-					req.URL.Scheme,
-					req.URL.Host,
-					req.URL.Path,
-					req.URL.RawQuery,
-				)
+				Debug("反向代理最终请求", "方法=", req.Method, "协议=", req.URL.Scheme, "主机=", req.URL.Host, "路径=", req.URL.Path, "查询=", req.URL.RawQuery)
 
 			},
 			ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
@@ -381,12 +374,12 @@ func (s *Server) RegisterNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, 
 // 参数：mappedPath - 映射路径，remoteNode - 远程节点，remoteBaseUrl - 远程基础URL，extraArgs - 额外参数。
 // 返回：错误信息（如有）。
 func (s *Server) RegisterNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, extraArgs map[string]string) error {
-	// 构造 JSON 请求体
+	// 构造JSON请求体
 	payload := map[string]string{
 		"remote_node": remoteNode,
 		"url":         remoteBaseUrl + mappedPath,
 	}
-	// 合并 extraArgs
+	// 合并额外参数
 	for k, v := range extraArgs {
 		payload[k] = v
 	}
@@ -415,7 +408,7 @@ func (s *Server) RegisterNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, 
 		return fmt.Errorf("FRP registration failed: %s", string(body))
 	}
 
-	log.Printf("FRP registered: mappedPath %s => %s", mappedPath, remoteBaseUrl)
+	Log("FRP已注册", "映射路径=", mappedPath, "远程基础URL=", remoteBaseUrl)
 	return nil
 }
 
@@ -483,7 +476,7 @@ func (s *Server) RemoveNginxFrp(mappedPath, remoteNode, remoteBaseUrl string, ex
 		return fmt.Errorf("FRP removal failed: %s", string(body))
 	}
 
-	log.Printf("FRP removed: mappedPath %s => %s", mappedPath, remoteBaseUrl)
+	Log("FRP已移除", "映射路径=", mappedPath, "远程基础URL=", remoteBaseUrl)
 	return nil
 }
 

@@ -13,8 +13,7 @@ import (
 // DebugPrint StreamStub的调试打印函数。
 // 参数：name - 调用者名称，message - 要输出的信息。
 func (s *StreamStub) DebugPrint(name string, message string) {
-	return
-	fmt.Printf("[%s: %s] %s\n", s.myId, name, message)
+	Debug("FRP流调试", "流ID=", s.myId, "操作=", name, "消息=", message)
 }
 
 // WindowBuffer WindowBuffer结构体，滑动窗口缓冲区，用于流式数据的有序缓存和重传。
@@ -308,7 +307,7 @@ func (stub *StreamStub) sendDataLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("sendDataLoop cancelled")
+			Debug("发送数据循环已取消")
 			stub.doClose()
 			return
 		case data := <-stub.readChan:
@@ -319,7 +318,7 @@ func (stub *StreamStub) sendDataLoop(ctx context.Context) {
 			stub.sendWindowLock.Lock()
 			for !stub.sendWindow.CanPut(seq) {
 				if seq < stub.sendWindow.startSeq {
-					fmt.Printf("sendSeq %d is behind window start %d, aborting\n", seq, stub.sendWindow.startSeq)
+					Error("发送序号落后于窗口起始序号，中止", "发送序号=", seq, "窗口起始序号=", stub.sendWindow.startSeq)
 					stub.sendWindowLock.Unlock()
 					stub.doClose()
 					return
@@ -522,8 +521,8 @@ func (stub *StreamStub) resendUnackedData() {
 
 		if stub.fastConnect {
 			if retries >= common.MaxRetryCount {
-				fmt.Println("Too many retries, closing stream:", stub.myId)
-				fmt.Println("conn close due to too many retries")
+				Error("重试次数过多，关闭流", "流ID=", stub.myId)
+				Error("连接因重试次数过多而关闭")
 				stub.doClose()
 				return
 			}
@@ -590,7 +589,7 @@ func (stub *StreamStub) startReadFromConn() {
 		for {
 			n, err := stub.conn.Read(buf)
 			if err != nil {
-				fmt.Println("conn read error:", err)
+				Error("连接读取错误", "错误=", err)
 				stub.doClose()
 				return
 			}
@@ -627,7 +626,7 @@ func (stub *StreamStub) frpMessageInLoop() {
 			case FRPClose:
 				stub.onClose()
 			default:
-				fmt.Println("Unknown FRP message type")
+				Error("未知的FRP消息类型")
 			}
 		}
 	}
@@ -702,7 +701,7 @@ func (stub *StreamStub) enqueueWrite(data []byte) {
 	case stub.writeChan <- data:
 		//fmt.Printf("[FRP enqueueWrite] data enqueued\n")
 	default:
-		fmt.Printf("[FRP enqueueWrite] writeChan full, dropping data\n")
+		Error("FRP写入队列已满，丢弃数据")
 	}
 }
 
@@ -741,7 +740,7 @@ func (stub *StreamStub) idleMonitorLoop(ctx context.Context) {
 			lastAny := stub.lastActivityTime.Load().(time.Time)
 			if stub.fastConnect {
 				if time.Since(lastAny) > 30*time.Second {
-					fmt.Println("Idle timeout, closing stream:", stub.myId)
+					Error("空闲超时，关闭流", "流ID=", stub.myId)
 					stub.doClose()
 					return
 				}

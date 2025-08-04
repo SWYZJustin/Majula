@@ -2,7 +2,6 @@ package core
 
 import (
 	"Majula/common"
-	"fmt"
 	"sync"
 )
 
@@ -31,7 +30,7 @@ type LearnerClient struct {
 func NewLearnerClient(group string, node *Node, dbPath string) *LearnerClient {
 	storage, err := NewStorage(dbPath, node.ID)
 	if err != nil {
-		fmt.Printf("[Learner][%s] Failed to create storage: %v\n", node.ID, err)
+		Error("Learner存储创建失败", "节点ID=", node.ID, "错误=", err)
 		// 使用内存存储作为fallback
 		storage = &Storage{
 			db:     nil,
@@ -73,7 +72,7 @@ func NewLearnerClient(group string, node *Node, dbPath string) *LearnerClient {
 func (lc *LearnerClient) onRaftMessage(group, from, to string, content []byte) {
 	var payload RaftPayload
 	if err := common.UnmarshalAny(content, &payload); err != nil {
-		fmt.Println("[Learner] Failed to unmarshal:", err)
+		Error("Learner消息反序列化失败", "错误=", err)
 		return
 	}
 	if payload.Type == AppendEntries {
@@ -209,7 +208,7 @@ func (lc *LearnerClient) persistLog() {
 func (lc *LearnerClient) LoadLogs() {
 	logs, err := lc.Storage.LoadLogs(lc.Group)
 	if err != nil {
-		fmt.Printf("[Learner][%s] Failed to load logs for group %s: %v\n", lc.ID, lc.Group, err)
+		Error("Learner加载日志失败", "节点ID=", lc.ID, "组=", lc.Group, "错误=", err)
 		return
 	}
 	lc.Log = logs
@@ -219,7 +218,7 @@ func (lc *LearnerClient) LoadLogs() {
 // targetNode: 目标节点ID
 // content: 消息内容
 func (lc *LearnerClient) sendToTarget(targetNode string, content string) {
-	fmt.Printf("[Send] from=%s to=%s content=%s\n", lc.ID, targetNode, content)
+	Debug("Learner发送消息", "来源=", lc.ID, "目标=", targetNode, "内容=", content)
 	msg := &Message{
 		MessageData: MessageData{
 			Type: RaftMessage,

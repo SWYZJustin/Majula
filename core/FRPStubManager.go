@@ -225,27 +225,27 @@ func (sm *StubManager) RunFRPWithStub(code string) error {
 	}
 	result, ok := sm.Node.MakeRpcRequest(config.RemoteNode, "init", "_frp_connect", params)
 	if !ok || result == nil {
-		fmt.Println("conn close due error in rpc request")
+		Error("RPC请求错误导致连接关闭")
 		stub.doClose()
 		return fmt.Errorf("RPC _frp_connect failed: %v", result)
 	}
 
 	resultMap, ok := result.(map[string]interface{})
 	if !ok {
-		fmt.Println("conn close due to error in rpc request return structure")
+		Error("RPC请求返回结构错误导致连接关闭")
 		stub.doClose()
 		return fmt.Errorf("unexpected RPC response format")
 	}
 
 	peerStubVal, exists := resultMap["peer_stub_id"]
 	if !exists {
-		fmt.Println("conn close due to no peer stub id in rpc response")
+		Error("RPC响应中缺少对端存根ID导致连接关闭")
 		stub.doClose()
 		return fmt.Errorf("RPC response missing 'peer_stub_id'")
 	}
 	peerStubId, ok := peerStubVal.(string)
 	if !ok || peerStubId == "" {
-		fmt.Println("conn close due to peer stub id in rpc response is wrongly set")
+		Error("RPC响应中对端存根ID设置错误导致连接关闭")
 		stub.doClose()
 		return fmt.Errorf("invalid 'peer_stub_id' in RPC response")
 	}
@@ -276,7 +276,7 @@ func (node *Node) RegisterFRPRPCHandler() {
 		if !exists {
 			return map[string]interface{}{"error": fmt.Sprintf("FRP code '%s' not registered", code)}
 		}
-		fmt.Println("___________________----------------- The tcp server dial addr is " + config.RemoteAddr)
+		Debug("TCP服务器拨号地址", "地址=", config.RemoteAddr)
 		conn, err := net.Dial("tcp", config.RemoteAddr)
 
 		if err != nil {
@@ -350,7 +350,7 @@ func (sm *StubManager) RunRegisteredFRP(code string) error {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				fmt.Println("FRP listener accept error:", err)
+				Error("FRP监听器接受连接错误", "错误=", err)
 				continue
 			}
 			go func(clientConn net.Conn) {
@@ -360,8 +360,8 @@ func (sm *StubManager) RunRegisteredFRP(code string) error {
 				config, ok := sm.FrpConfigs[code]
 				sm.FrpConfigMutex.RUnlock()
 				if !ok {
-					fmt.Printf("FRP code '%s' not registered\n", code)
-					fmt.Println("conn close due to wrong rpc code")
+					Error("FRP代码未注册", "代码=", code)
+					Error("错误的RPC代码导致连接关闭")
 					clientConn.Close()
 					return
 				}
@@ -374,19 +374,19 @@ func (sm *StubManager) RunRegisteredFRP(code string) error {
 				sm.StubMutex.Unlock()
 
 				if err := sm.RunFRPWithExistingConn(code, stubId, clientConn); err != nil {
-					fmt.Printf("FRP dynamic tunnel failed: %v\n", err)
+					Error("FRP动态隧道失败", "错误=", err)
 					stub.doClose()
 					return
 				}
 
 				stub.StartSendLoop()
 				stub.StartRecvLoop()
-				fmt.Println("-----------Reach the end of the connection establish------------")
+				Debug("连接建立完成")
 			}(conn)
 		}
 	}()
 
-	fmt.Println("Started FRP listener on", localAddr, "for code", code)
+	Log("FRP监听器已启动", "本地地址=", localAddr, "代码=", code)
 	return nil
 }
 
@@ -414,11 +414,10 @@ func (sm *StubManager) RunFRPWithExistingConn(code, stubId string, conn net.Conn
 	if !ok {
 		return fmt.Errorf("unexpected RPC response format")
 	}
-	fmt.Println("_______________________________________________________")
-	fmt.Println(resultMap)
+	Debug("RPC响应结果", "结果=", resultMap)
 
 	peerStubVal, exists := resultMap["peer_stub_id"]
-	fmt.Println("The peer id got +" + peerStubVal.(string))
+	Debug("获取到对端ID", "对端ID=", peerStubVal.(string))
 	if !exists {
 		return fmt.Errorf("RPC response missing 'peer_stub_id'")
 	}
@@ -666,7 +665,7 @@ func (sm *StubManager) handleFrpMessages(msg *Message) {
 	case FRPData:
 		var payload FRPDataPayload
 		if err := common.UnmarshalAny([]byte(msg.Data), &payload); err != nil {
-			fmt.Println("FRPData unmarshal error:", err)
+			Error("FRP数据反序列化错误", "错误=", err)
 			return
 		}
 		stubId = payload.TargetStubID
@@ -674,7 +673,7 @@ func (sm *StubManager) handleFrpMessages(msg *Message) {
 	case FRPAck:
 		var payload FRPAckPayload
 		if err := common.UnmarshalAny([]byte(msg.Data), &payload); err != nil {
-			fmt.Println("FRPAck unmarshal error:", err)
+			Error("FRP确认包反序列化错误", "错误=", err)
 			return
 		}
 		stubId = payload.TargetStubID
@@ -682,7 +681,7 @@ func (sm *StubManager) handleFrpMessages(msg *Message) {
 	case FRPResendRequest:
 		var payload FRPResendRequestPayload
 		if err := common.UnmarshalAny([]byte(msg.Data), &payload); err != nil {
-			fmt.Println("FRPResendRequest unmarshal error:", err)
+			Error("FRP重传请求反序列化错误", "错误=", err)
 			return
 		}
 		stubId = payload.TargetStubID
@@ -691,20 +690,20 @@ func (sm *StubManager) handleFrpMessages(msg *Message) {
 		stubId = msg.Data
 
 	default:
-		fmt.Println("Unhandled FRP message type:", msg.Type)
+		Error("未处理的FRP消息类型", "类型=", msg.Type)
 		return
 	}
 
 	stub, ok := sm.GetStubById(stubId)
 	if !ok {
-		fmt.Printf("handleFrpMessages: stub not found for %s (type %v)\n", stubId, msg.Type)
+		Error("处理FRP消息时未找到存根", "存根ID=", stubId, "消息类型=", msg.Type)
 		return
 	}
 
 	select {
 	case stub.inChan <- frpMessage{msgType: msg.Type, payload: []byte(msg.Data)}:
 	default:
-		fmt.Printf("handleFrpMessages: inChan full for stub %s (dropping message)\n", stubId)
+		Error("处理FRP消息时存根输入通道已满，丢弃消息", "存根ID=", stubId)
 	}
 }
 
@@ -731,7 +730,7 @@ func (sm *StubManager) RunFRPDynamicWithRegistration(code string) error {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				fmt.Println("Dynamic FRP listener accept error:", err)
+				Error("动态FRP监听器接受连接错误", "错误=", err)
 				continue
 			}
 
@@ -749,28 +748,28 @@ func (sm *StubManager) RunFRPDynamicWithRegistration(code string) error {
 				}
 				result, ok := sm.Node.MakeRpcRequest(remoteNode, "init", "_frp_dynamic_connect", params)
 				if !ok || result == nil {
-					fmt.Println("Dynamic FRP RPC failed:", result)
+					Error("动态FRP RPC失败", "结果=", result)
 					stub.doClose()
 					return
 				}
 
 				resultMap, ok := result.(map[string]interface{})
 				if !ok {
-					fmt.Println("Invalid RPC response format")
+					Error("RPC响应格式无效")
 					stub.doClose()
 					return
 				}
 
 				peerStubVal, exists := resultMap["peer_stub_id"]
 				if !exists {
-					fmt.Println("RPC response missing 'peer_stub_id'")
+					Error("RPC响应缺少peer_stub_id")
 					stub.doClose()
 					return
 				}
 
 				peerStubId, ok := peerStubVal.(string)
 				if !ok || peerStubId == "" {
-					fmt.Println("Invalid 'peer_stub_id' in RPC response")
+					Error("RPC响应中的peer_stub_id无效")
 					stub.doClose()
 					return
 				}
@@ -779,12 +778,12 @@ func (sm *StubManager) RunFRPDynamicWithRegistration(code string) error {
 				stub.StartSendLoop()
 				stub.StartRecvLoop()
 
-				fmt.Println("Dynamic FRP tunnel established successfully:", code)
+				Log("动态FRP隧道建立成功", "代码=", code)
 			}(conn)
 		}
 	}()
 
-	fmt.Println("Started dynamic FRP listener on", localAddr)
+	Log("动态FRP监听器已启动", "本地地址=", localAddr)
 	return nil
 }
 
@@ -811,7 +810,7 @@ func (sm *StubManager) RunFRPDynamicWithRegistrationLocalAddr(localAddr string) 
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				fmt.Println("Dynamic FRP listener accept error:", err)
+				Error("动态FRP监听器接受连接错误", "错误=", err)
 				continue
 			}
 
@@ -829,28 +828,28 @@ func (sm *StubManager) RunFRPDynamicWithRegistrationLocalAddr(localAddr string) 
 				}
 				result, ok := sm.Node.MakeRpcRequest(remoteNode, "init", "_frp_dynamic_connect", params)
 				if !ok || result == nil {
-					fmt.Println("Dynamic FRP RPC failed:", result)
+					Error("动态FRP RPC失败", "结果=", result)
 					stub.doClose()
 					return
 				}
 
 				resultMap, ok := result.(map[string]interface{})
 				if !ok {
-					fmt.Println("Invalid RPC response format")
+					Error("RPC响应格式无效")
 					stub.doClose()
 					return
 				}
 
 				peerStubVal, exists := resultMap["peer_stub_id"]
 				if !exists {
-					fmt.Println("RPC response missing 'peer_stub_id'")
+					Error("RPC响应缺少peer_stub_id")
 					stub.doClose()
 					return
 				}
 
 				peerStubId, ok := peerStubVal.(string)
 				if !ok || peerStubId == "" {
-					fmt.Println("Invalid 'peer_stub_id' in RPC response")
+					Error("RPC响应中的peer_stub_id无效")
 					stub.doClose()
 					return
 				}
@@ -859,12 +858,12 @@ func (sm *StubManager) RunFRPDynamicWithRegistrationLocalAddr(localAddr string) 
 				stub.StartSendLoop()
 				stub.StartRecvLoop()
 
-				fmt.Println("Dynamic FRP tunnel established successfully:", code)
+				Log("动态FRP隧道建立成功", "代码=", code)
 			}(conn)
 		}
 	}()
 
-	fmt.Println("Started dynamic FRP listener on", localAddr)
+	Log("动态FRP监听器已启动", "本地地址=", localAddr)
 	return nil
 }
 
@@ -881,7 +880,7 @@ func (sm *StubManager) RunFRPDynamicWithoutRegistration(localAddr, remoteNode, r
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				fmt.Println("Dynamic FRP listener accept error:", err)
+				Error("动态FRP监听器接受连接错误", "错误=", err)
 				continue
 			}
 
@@ -900,28 +899,28 @@ func (sm *StubManager) RunFRPDynamicWithoutRegistration(localAddr, remoteNode, r
 				}
 				result, ok := sm.Node.MakeRpcRequest(remoteNode, "init", "_frp_dynamic_connect", params)
 				if !ok || result == nil {
-					fmt.Println("Dynamic FRP RPC failed:", result)
+					Error("动态FRP RPC失败", "结果=", result)
 					stub.doClose()
 					return
 				}
 
 				resultMap, ok := result.(map[string]interface{})
 				if !ok {
-					fmt.Println("Invalid RPC response format")
+					Error("RPC响应格式无效")
 					stub.doClose()
 					return
 				}
 
 				peerStubVal, exists := resultMap["peer_stub_id"]
 				if !exists {
-					fmt.Println("RPC response missing 'peer_stub_id'")
+					Error("RPC响应缺少peer_stub_id")
 					stub.doClose()
 					return
 				}
 
 				peerStubId, ok := peerStubVal.(string)
 				if !ok || peerStubId == "" {
-					fmt.Println("Invalid 'peer_stub_id' in RPC response")
+					Error("RPC响应中的peer_stub_id无效")
 					stub.doClose()
 					return
 				}
@@ -930,12 +929,12 @@ func (sm *StubManager) RunFRPDynamicWithoutRegistration(localAddr, remoteNode, r
 				stub.StartSendLoop()
 				stub.StartRecvLoop()
 
-				fmt.Println("Dynamic FRP tunnel established successfully:", code)
+				Log("动态FRP隧道建立成功", "代码=", code)
 			}(conn)
 		}
 	}()
 
-	fmt.Println("Started dynamic FRP listener on", localAddr)
+	Log("动态FRP监听器已启动", "本地地址=", localAddr)
 	return nil
 }
 

@@ -10,7 +10,7 @@ import (
 
 type RpcServiceInfo struct {
 	NodeID    string            `json:"node_id"`
-	Functions map[string]string `json:"functions"` // map[funcName]provider
+	Functions map[string]string `json:"functions"` // 函数名到提供者的映射
 }
 
 type RPC_REQ_CALLBACK func(fun string, params map[string]interface{}, from string, to string, invokeId int64) interface{}
@@ -184,7 +184,7 @@ func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun str
 	}
 	data, err := common.MarshalAny(cRequestData)
 	if err != nil {
-		node.DebugPrint("makeRpcRequest_"+fun+"_"+peer, "error marshaling request data: "+err.Error())
+		Debug("RPC请求序列化失败", "函数=", fun, "目标=", peer, "错误=", err.Error())
 		node.ActiveStubsMutex.Unlock()
 		return nil, false
 	}
@@ -227,13 +227,13 @@ func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun str
 	select {
 	case result, ok := <-stub.Result:
 		if !ok {
-			node.DebugPrint("makeRpcRequest_"+fun+"_"+peer, "result channel closed")
+			Debug("RPC结果通道已关闭", "函数=", fun, "目标=", peer)
 			return nil, false
 		}
 
 		if resultMap, ok := result.(map[string]interface{}); ok {
 			if errStr, exists := resultMap["error"]; exists {
-				node.DebugPrint("makeRpcRequest_"+fun+"_"+peer, fmt.Sprintf("RPC error: %v", errStr))
+				Debug("RPC调用错误", "函数=", fun, "目标=", peer, "错误=", errStr)
 				return nil, false
 			}
 		}
@@ -241,7 +241,7 @@ func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun str
 		return result, true
 
 	case <-time.After(common.DefaultRpcOvertime):
-		node.DebugPrint("makeRpcRequest_"+fun+"_"+peer, "timeout")
+		Debug("RPC调用超时", "函数=", fun, "目标=", peer)
 		return nil, false
 	}
 }
@@ -250,15 +250,15 @@ func (node *Node) MakeRpcRequest(peer string, targetFuncProvider string, fun str
 // 参数：provider - 提供者，fun - 方法名，params - 参数。
 // 返回：结果和是否成功。
 func (node *Node) invokeLocalRpc(provider string, fun string, params map[string]interface{}) (interface{}, bool) {
-	node.DebugPrint("invokeLocalRpc", fmt.Sprintf("invoking local RPC: fun=%s, provider=%s", fun, provider))
+	Debug("调用本地RPC", "函数=", fun, "提供者=", provider)
 
 	targetFunc := node.findTargetLocalRpcService(fun, provider)
 	if targetFunc == nil {
-		node.DebugPrint("invokeLocalRpc", fmt.Sprintf("function '%s' with provider '%s' not found", fun, provider))
+		Debug("本地RPC函数未找到", "函数=", fun, "提供者=", provider)
 		return map[string]interface{}{"error": "function not found"}, false
 	}
 	if targetFunc.Callback == nil {
-		node.DebugPrint("invokeLocalRpc", fmt.Sprintf("function '%s' has no callback", fun))
+		Debug("本地RPC函数无回调", "函数=", fun)
 		return map[string]interface{}{"error": "callback not defined"}, false
 	}
 
@@ -266,14 +266,14 @@ func (node *Node) invokeLocalRpc(provider string, fun string, params map[string]
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				node.DebugPrint("invokeLocalRpc", fmt.Sprintf("panic occurred during callback execution: %v", r))
+				Error("本地RPC回调执行时发生panic", "函数=", fun, "错误=", r)
 				result = map[string]interface{}{"error": "internal error"}
 			}
 		}()
 
-		node.DebugPrint("invokeLocalRpc", fmt.Sprintf("calling callback: fun=%s, provider=%s", fun, provider))
+		Debug("调用RPC回调", "函数=", fun, "提供者=", provider)
 		result = targetFunc.Callback(fun, params, node.ID, node.ID, 0)
-		node.DebugPrint("invokeLocalRpc", fmt.Sprintf("callback completed: result=%+v", result))
+		Debug("RPC回调执行完成", "函数=", fun, "结果=", result)
 	}()
 
 	return result, true
@@ -282,25 +282,25 @@ func (node *Node) invokeLocalRpc(provider string, fun string, params map[string]
 // 处理收到的RPC请求消息。
 // 参数：msg - 消息。
 func (node *Node) handleRpcRequest(msg *Message) {
-	node.DebugPrint("handleRpcRequest", msg.Print())
+	Debug("处理RPC请求", "消息=", msg.Print())
 
 	var rpcReq RPC_Request
 	err := common.UnmarshalAny([]byte(msg.MessageData.Data), &rpcReq)
 	if err != nil {
-		node.DebugPrint("handleRpcRequest", "Failed to parse request: "+err.Error())
+		Error("解析RPC请求失败", "错误=", err.Error())
 		node.sendRpcErrorResponse(msg, "", "invalid JSON format")
 		return
 	}
 
 	if node.isDuplicateRpc(msg.From, msg.InvokeId) {
-		node.DebugPrint("handleRpcRequest", fmt.Sprintf("Duplicate invokeId %d from %s", msg.InvokeId, msg.From))
+		Debug("重复的RPC调用ID", "调用ID=", msg.InvokeId, "来源=", msg.From)
 		node.sendRpcErrorResponse(msg, rpcReq.Fun, fmt.Sprintf("duplicate invokeId: %d", msg.InvokeId))
 		return
 	}
 
 	targetFunc := node.findTargetLocalRpcService(rpcReq.Fun, msg.Entity)
 	if targetFunc == nil || targetFunc.Callback == nil {
-		node.DebugPrint("handleRpcRequest", "No RPC handler found for "+rpcReq.Fun+" by "+msg.Entity)
+		Debug("未找到RPC处理器", "函数=", rpcReq.Fun, "实体=", msg.Entity)
 		node.sendRpcErrorResponse(msg, rpcReq.Fun, "function not found or no callback registered")
 		return
 	}
@@ -310,7 +310,7 @@ func (node *Node) handleRpcRequest(msg *Message) {
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				node.DebugPrint("handleRpcRequest", fmt.Sprintf("Recovered from panic: %v", r))
+				Error("RPC请求处理时发生panic", "错误=", r)
 				result = nil
 			}
 		}()
@@ -323,7 +323,7 @@ func (node *Node) handleRpcRequest(msg *Message) {
 	}
 	respBytes, err := common.MarshalAny(resp)
 	if err != nil {
-		node.DebugPrint("handleRpcRequest", "Failed to marshal response: "+err.Error())
+		Error("序列化RPC响应失败", "错误=", err.Error())
 		node.sendRpcErrorResponse(msg, rpcReq.Fun, "internal error: response marshal failed")
 		return
 	}
@@ -351,7 +351,7 @@ func (node *Node) sendRpcErrorResponse(msg *Message, fun string, errMsg string) 
 	}
 	respBytes, err := common.MarshalAny(resp)
 	if err != nil {
-		node.DebugPrint("sendRpcErrorResponse", "Failed to marshal error response: "+err.Error())
+		Error("序列化RPC错误响应失败", "错误=", err.Error())
 		return
 	}
 
@@ -372,12 +372,12 @@ func (node *Node) sendRpcErrorResponse(msg *Message, fun string, errMsg string) 
 // 处理收到的RPC响应消息。
 // 参数：msg - 消息。
 func (node *Node) handleRpcResponse(msg *Message) {
-	node.DebugPrint("handleRpcResponse", msg.Print())
+	Debug("处理RPC响应", "消息=", msg.Print())
 
 	var resp RPC_Resp
 	err := common.UnmarshalAny([]byte(msg.MessageData.Data), &resp)
 	if err != nil {
-		node.DebugPrint("handleRpcResponse", "Failed to parse response: "+err.Error())
+		Error("解析RPC响应失败", "错误=", err.Error())
 		return
 	}
 
@@ -386,7 +386,7 @@ func (node *Node) handleRpcResponse(msg *Message) {
 	node.ActiveStubsMutex.RUnlock()
 
 	if !exists {
-		node.DebugPrint("handleRpcResponse", fmt.Sprintf("No stub found for invokeId: %d", msg.InvokeId))
+		Debug("未找到RPC存根", "调用ID=", msg.InvokeId)
 		return
 	}
 
@@ -412,7 +412,7 @@ func (node *Node) handleRpcServiceFlood(msg *Message) {
 	var info RpcServiceInfo
 	err := common.UnmarshalAny([]byte(msg.MessageData.Data), &info)
 	if err != nil {
-		node.DebugPrint("handleRpcServiceFlood", "invalid payload: "+err.Error())
+		Error("RPC服务广播负载无效", "错误=", err.Error())
 		return
 	}
 
@@ -449,16 +449,16 @@ func (node *Node) PrintTotalRpcs() {
 	node.TotalRpcsMutex.RLock()
 	defer node.TotalRpcsMutex.RUnlock()
 
-	fmt.Printf("Node %s: known RPC function providers\n", node.ID)
+	Log("节点", node.ID, "已知的RPC函数提供者")
 	if len(node.TotalRpcs) == 0 {
-		fmt.Println("  No RPC info available.")
+		Log("  无RPC信息可用")
 		return
 	}
 
 	for funcName, nodeMap := range node.TotalRpcs {
-		fmt.Printf("  Function '%s':\n", funcName)
+		Log("  函数", funcName, ":")
 		for nodeID, provider := range nodeMap {
-			fmt.Printf("    Node %s (entity: %s)\n", nodeID, provider)
+			Log("    节点", nodeID, "(实体:", provider, ")")
 		}
 	}
 }
@@ -472,10 +472,10 @@ func (node *Node) startPeriodicRpcFlood() {
 		for {
 			select {
 			case <-node.HBctx.Done():
-				node.DebugPrint("startPeriodicRpcFlood", "stopped due to HBctx cancel")
+				Debug("周期性RPC广播已停止", "原因=心跳上下文取消")
 				return
 			case <-ticker.C:
-				node.DebugPrint("startPeriodicRpcFlood", "broadcasting RPC services")
+				Debug("广播RPC服务")
 				node.floodRpcServices()
 			}
 		}
@@ -501,7 +501,7 @@ func (node *Node) RegisterDefaultRPCs() {
 		return map[string]interface{}{"time": time.Now().Format(time.RFC3339)}
 	})
 
-	// Whoami
+	// 返回节点ID
 	node.registerRpcService("whoami", "init", RPC_FuncInfo{Note: "Returns Node ID"}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
 		return map[string]interface{}{"id": node.ID}
 	})
@@ -611,7 +611,7 @@ func (node *Node) RegisterDefaultRPCs() {
 		if !exists {
 			return map[string]interface{}{"error": fmt.Sprintf("raft group %s not found", group)}
 		}
-		
+
 		if raftClient.Role != Leader {
 			raftClient.Mutex.Lock()
 			res := map[string]interface{}{
@@ -632,7 +632,7 @@ func (node *Node) RegisterDefaultRPCs() {
 		}
 	})
 
-	// Raft Put 操作
+	// Raft Put操作
 	node.registerRpcService("put", "raft", RPC_FuncInfo{
 		Note: "Put a key-value pair to Raft group",
 	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
@@ -691,7 +691,7 @@ func (node *Node) RegisterDefaultRPCs() {
 		}
 	})
 
-	// Raft Delete 操作
+	// Raft Delete操作
 	node.registerRpcService("delete", "raft", RPC_FuncInfo{
 		Note: "Delete a key from Raft group",
 	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
@@ -745,7 +745,7 @@ func (node *Node) RegisterDefaultRPCs() {
 		}
 	})
 
-	// Raft Get 操作（只读操作，不需要通过Raft共识）
+	// Raft Get操作（只读操作，不需要通过Raft共识）
 	node.registerRpcService("get", "raft", RPC_FuncInfo{
 		Note: "Get a value from Raft group (read-only operation)",
 	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {

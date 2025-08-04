@@ -4,7 +4,6 @@ import (
 	"Majula/common"
 	"bufio"
 	"crypto/tls"
-	"fmt"
 	"math/rand"
 	"net"
 	"strconv"
@@ -72,9 +71,12 @@ func (CWorker *TcpChannelWorker) getID() string {
 	return CWorker.Name
 }
 
-// NewTcpConnection 创建新的TCP通道工作者。
-// 参数详见函数定义。
-// 返回：*TcpChannelWorker。
+// NewTcpConnection 创建新的TCP通道工作者
+// 参数：name - 通道名称，isClient - 是否为客户端，localAddr - 本地地址，remoteAddr - 远程地址
+// ipWhitelist - IP白名单，maxFrameSize - 最大帧大小，maxInactiveDlt - 最大非活跃时间
+// maxSendQueueSize - 最大发送队列大小，maxConnectionPerSeconds - 每秒最大连接数
+// tlsConfig - TLS配置，pToken - 令牌
+// 返回：*TcpChannelWorker
 func NewTcpConnection(name string, isClient bool, localAddr string, remoteAddr string,
 	ipWhitelist []string, maxFrameSize int,
 	maxInactiveDlt int64, maxSendQueueSize int, maxConnectionPerSeconds int, tlsConfig *tls.Config, pToken string) *TcpChannelWorker {
@@ -82,7 +84,7 @@ func NewTcpConnection(name string, isClient bool, localAddr string, remoteAddr s
 	localTcpaddr, err := net.ResolveTCPAddr("tcp", localAddr)
 	if err != nil {
 		if !isClient {
-			//fmt.Println("Error resolving local address", localAddr, ":", err)
+			Error("解析本地地址失败", "localAddr=", localAddr, "error=", err)
 			return nil
 		}
 	}
@@ -97,13 +99,13 @@ func NewTcpConnection(name string, isClient bool, localAddr string, remoteAddr s
 		if tlsConfig == nil {
 			listener, err = net.ListenTCP("tcp", localTcpaddr)
 			if err != nil {
-				//fmt.Println("Error listening on", localTcpaddr, ":", err)
+				Error("TCP监听失败", "localAddr=", localTcpaddr, "error=", err)
 				return nil
 			}
 		} else {
 			listener, err = tls.Listen("tcp", localTcpaddr.String(), tlsConfig)
 			if err != nil {
-				//fmt.Println("Error listening on (with tls) ", localTcpaddr, ":", err)
+				Error("TLS监听失败", "localAddr=", localTcpaddr, "error=", err)
 				return nil
 			}
 		}
@@ -142,7 +144,7 @@ func NewTcpConnection(name string, isClient bool, localAddr string, remoteAddr s
 	} else {
 		remoteTcpaddr, err := net.ResolveTCPAddr("tcp", remoteAddr)
 		if err != nil {
-			//fmt.Println("Error resolving remote address", remoteAddr, ":", err)
+			Error("解析远程地址失败", "remoteAddr=", remoteAddr, "error=", err)
 			return nil
 		}
 		go ret.ConnectThread(localTcpaddr, remoteTcpaddr)
@@ -155,14 +157,14 @@ func NewTcpConnection(name string, isClient bool, localAddr string, remoteAddr s
 
 }
 
-// AcceptThread 监听并接受TCP连接的主线程。
+// AcceptThread 监听并接受TCP连接的主线程
 func (this *TcpChannelWorker) AcceptThread() {
 	var acceptlimiter = rate.NewLimiter(rate.Limit(this.MaxConnectionPerSecond), this.MaxConnectionPerSecond*2) // 每秒连接控制
 
 	for !this.IsClosed {
 		conn, err := this.Listener.Accept()
 		if err != nil {
-			//fmt.Println("Error accepting connection:", err)
+			Error("接受连接失败", "error=", err)
 			break
 		}
 
@@ -211,9 +213,9 @@ func (this *TcpChannelWorker) AcceptThread() {
 	}
 }
 
-// 将数据分片打包为数据帧。
-// 参数：data - 原始数据。
-// 返回：分帧后的字节切片。
+// wrapToDataFrame 将数据分片打包为数据帧
+// 参数：data - 原始数据
+// 返回：分帧后的字节切片
 func (w *TcpChannelWorker) wrapToDataFrame(data []byte) []byte {
 	maxDataSize := int(w.MaxFrameSize) - 4
 	n := len(data)
@@ -248,9 +250,9 @@ func (w *TcpChannelWorker) wrapToDataFrame(data []byte) []byte {
 	return result
 }
 
-// RegisterTcpLink 注册一个TCP连接。
-// 参数：conn - 连接，accepted - 是否为被动接收。
-// 返回：*TcpLink。
+// RegisterTcpLink 注册一个TCP连接
+// 参数：conn - 连接，accepted - 是否为被动接收
+// 返回：*TcpLink
 func (this *TcpChannelWorker) RegisterTcpLink(conn net.Conn, accepted bool) *TcpLink {
 	this.MutexForTcpLinks.Lock()
 	defer this.MutexForTcpLinks.Unlock()
@@ -329,7 +331,7 @@ func (this *TcpChannelWorker) ReadThread(conn net.Conn, accepted bool) {
 
 		i := 0
 		for i < len(head) {
-			//fmt.Println(this.User.getID() + "触发了读数据帧")
+			Debug("触发读数据帧", "worker=", this.User.getID())
 			n, err := reader.Read(head[i:])
 			if err != nil {
 				return
@@ -353,7 +355,7 @@ func (this *TcpChannelWorker) ReadThread(conn net.Conn, accepted bool) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						//fmt.Println("Recovered from send on closed channel:", r)
+						Warning("从已关闭通道发送中恢复", "error=", r)
 					}
 				}()
 				this.RecvPackagesChan <- IpPackage{
@@ -373,7 +375,7 @@ func (this *TcpChannelWorker) trySendRegisterMessage(link *TcpLink) {
 	if this.User == nil || link.HasSendRegister {
 		return
 	}
-	fmt.Println(this.User.getID() + " try to send Register message")
+	Debug("尝试发送注册消息", "worker=", this.User.getID())
 
 	link.HasSendRegister = true
 
@@ -395,7 +397,7 @@ func (this *TcpChannelWorker) trySendRegisterMessage(link *TcpLink) {
 
 	sentItem, err := common.MarshalAny(RegisterMsg)
 	if err != nil {
-		fmt.Println("Error marshaling Register message:", err)
+		Error("注册消息序列化失败", "error=", err)
 		return
 	}
 
@@ -410,7 +412,7 @@ func (this *TcpLink) WriteTo(ba []byte, important bool) (writeOk bool) {
 	defer func() {
 		recover()
 		if !writeOk {
-			//fmt.Println("Error writing to", ba)
+			Error("写入数据失败", "data=", ba)
 		}
 	}()
 
@@ -637,11 +639,10 @@ func (this *TcpChannelWorker) processPackage(pkg IpPackage) {
 		err := common.UnmarshalAny(pkg.Data, &msg)
 
 		if err != nil {
-			//fmt.Printf("failed to decode message: %v", err)
+			Error("消息解码失败", "error=", err)
 			return
 		}
-		//fmt.Println(this.User.getID() + "收到了新的信息")
-		//fmt.Println(msg.Print())
+		Debug("收到新消息", "worker=", this.User.getID(), "msg=", msg.Print())
 
 		if msg.Type == TcpRegister {
 			this.handleRegisterMessage(pra, &msg)
@@ -664,18 +665,13 @@ func (this *TcpChannelWorker) checkHash(msg *Message) bool {
 
 	result := selfCalculatedHash == HashValue
 
-	// Debug print
-	/*
-		fmt.Printf(
-			"checkHash | UserID: %v | From: %v | ExpectedHash: %v | ActualHash: %v | Result: %v\n",
-			this.User.getID(),
-			msg.From,
-			selfCalculatedHash,
-			HashValue,
-			result,
-		)
-
-	*/
+	// 调试哈希校验
+	Debug("哈希校验",
+		"用户ID=", this.User.getID(),
+		"来源=", msg.From,
+		"期望哈希=", selfCalculatedHash,
+		"实际哈希=", HashValue,
+		"结果=", result)
 
 	return result
 }
@@ -722,8 +718,8 @@ func (this *TcpChannelWorker) handleRegisterMessage(pra string, msg *Message) {
 		if _, ok := link.TlsServerName[msg.From]; !ok && len(link.TlsServerName) > 0 {
 			link.Close()
 		} else {
-			//fmt.Println(this.User.getID() + " 收到了来自" + msg.From + " 的link的注册消息")
-			//连接进行注册
+			Debug("收到注册消息", "用户ID=", this.User.getID(), "来源=", msg.From)
+			// 连接进行注册
 			link.HasRecvRegister = true
 		}
 	}
@@ -812,12 +808,12 @@ func (this *TcpChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
 		for _, ra := range ras {
 			if link, ok := this.TcpLinks[ra]; ok {
 				if !link.HasRecvRegister && msg.Type != TcpRegister {
-					//fmt.Println("The msg is blocked!")
+					Debug("消息被阻止发送", "原因=连接未注册", "消息类型=", msg.Type)
 					continue
 				}
 				go func(ba []byte, link *TcpLink, important bool) {
 					if len(ba) > 0 {
-						//fmt.Println(this.User.getID() + " Write in the sendToTarget " + msg.Print())
+						Debug("发送消息到目标", "用户ID=", this.User.getID(), "消息=", msg.Print())
 						link.WriteTo(ba, important)
 					}
 				}(ba, link, msg.isImportant())
@@ -839,11 +835,11 @@ func (this *TcpChannelWorker) broadCast(msg *Message) {
 			links := this.GetAllConns()
 			for _, link := range links {
 				if !link.HasRecvRegister && msg.Type != TcpRegister {
-					//fmt.Println("The msg is blocked!")
+					Debug("广播消息被阻止", "原因=连接未注册", "消息类型=", msg.Type)
 					continue
 				}
 				go func(link *TcpLink) {
-					//fmt.Println(this.User.getID() + " Write in the broadcast " + msg.Print())
+					Debug("广播消息", "用户ID=", this.User.getID(), "消息=", msg.Print())
 					link.WriteTo(ba, important)
 				}(link)
 			}

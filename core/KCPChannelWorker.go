@@ -2,7 +2,6 @@ package core
 
 import (
 	"Majula/common"
-	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -123,7 +122,6 @@ func (this *KcpChannelWorker) AcceptThread() {
 		if err != nil {
 			break
 		}
-		//fmt.Printf("[KCP AcceptThread] New connection from %s\n", sess.RemoteAddr().String())
 		// 白名单校验
 		if len(this.ipWhitelist) > 0 {
 			remoteAddr := sess.RemoteAddr().String()
@@ -145,19 +143,16 @@ func (this *KcpChannelWorker) AcceptThread() {
 				}
 			}
 			if !allowed {
-				//fmt.Printf("[KCP AcceptThread] Connection from %s rejected by whitelist\n", remoteIP)
+				Error("[KCP 接受线程] 连接来自 %s 被白名单拒绝", remoteIP)
 				sess.Close()
 				continue
 			}
 		}
 		if this.MaxConnectionPerSecond > 0 && !acceptlimiter.Allow() {
-			//fmt.Printf("[KCP AcceptThread] Connection from %s rejected by rate limit\n", sess.RemoteAddr().String())
+			Error("[KCP 接受线程] 连接来自 %s 因速率限制被拒绝", sess.RemoteAddr().String())
 			sess.Close()
 			continue
 		}
-		//fmt.Printf("[KCP AcceptThread] Connection from %s accepted\n", sess.RemoteAddr().String())
-		//fmt.Printf("The channel user is nil? ")
-		//fmt.Println(this.User == nil)
 		if this.User != nil {
 			this.User.onConnectChanged(this, true)
 		}
@@ -198,7 +193,6 @@ func (w *KcpChannelWorker) wrapToDataFrame(data []byte) []byte {
 func (this *KcpChannelWorker) RegisterKcpLink(sess *kcp.UDPSession, accepted bool) *KcpLink {
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
-	//fmt.Printf("[KCP RegisterKcpLink] Register %s, accepted=%v\n", sess.RemoteAddr().String(), accepted)
 	oldSess, ok := this.KcpLinks[sess.RemoteAddr().String()]
 	link := &KcpLink{
 		StartTime:                time.Now().Unix(),
@@ -222,7 +216,6 @@ func (this *KcpChannelWorker) RegisterKcpLink(sess *kcp.UDPSession, accepted boo
 func (this *KcpChannelWorker) UnregisterKcpLink(sess *kcp.UDPSession) {
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
-	//fmt.Printf("[KCP UnregisterKcpLink] Unregister %s\n", sess.RemoteAddr().String())
 	if oldSess, ok := this.KcpLinks[sess.RemoteAddr().String()]; ok {
 		delete(this.KcpLinks, sess.RemoteAddr().String())
 		oldSess.Close()
@@ -240,14 +233,12 @@ func (this *KcpChannelWorker) TouchKcpLink(sess *kcp.UDPSession) {
 // ReadThread 负责从KCP连接读取数据包并分帧，推送到接收队列。
 // 参数：sess - KCP会话，accepted - 是否为被动接受
 func (this *KcpChannelWorker) ReadThread(sess *kcp.UDPSession, accepted bool) {
-	//fmt.Printf("[KCP ReadThread] Start for %s, accepted=%v\n", sess.RemoteAddr().String(), accepted)
 	link := this.RegisterKcpLink(sess, accepted)
 	defer func() {
 		this.UnregisterKcpLink(sess)
 		if this.User != nil {
 			this.User.onConnectChanged(this, false)
 		}
-		//fmt.Printf("[KCP ReadThread] Closed for %s\n", sess.RemoteAddr().String())
 	}()
 	head := make([]byte, 4)
 	toBeContinueBuffer := []byte{}
@@ -257,7 +248,7 @@ func (this *KcpChannelWorker) ReadThread(sess *kcp.UDPSession, accepted bool) {
 		for i < len(head) {
 			n, err := sess.Read(head[i:])
 			if err != nil {
-				//fmt.Printf("[KCP ReadThread] Read head error: %v\n", err)
+				Error("[KCP 读取线程] 读取头部错误", err)
 				return
 			}
 			i += n
@@ -269,7 +260,7 @@ func (this *KcpChannelWorker) ReadThread(sess *kcp.UDPSession, accepted bool) {
 		for i < len(ba) {
 			n, err := sess.Read(ba[i:])
 			if err != nil {
-				//fmt.Printf("[KCP ReadThread] Read body error: %v\n", err)
+				Error("[KCP 读取线程] 读取主体错误", err)
 				return
 			}
 			i += n
@@ -277,7 +268,7 @@ func (this *KcpChannelWorker) ReadThread(sess *kcp.UDPSession, accepted bool) {
 		}
 		toBeContinueBuffer = append(toBeContinueBuffer, ba...)
 		if head[0] == 2 {
-			//fmt.Printf("[KCP ReadThread] Received data frame from %s, len=%d\n", sess.RemoteAddr().String(), len(toBeContinueBuffer))
+			Log("[KCP 读取线程] 收到数据帧，长度=", len(toBeContinueBuffer))
 			func() {
 				defer func() { recover() }()
 				this.RecvPackagesChan <- IpPackage{
@@ -315,10 +306,10 @@ func (this *KcpChannelWorker) trySendRegisterMessage(link *KcpLink) {
 	}
 	sentItem, err := common.MarshalAny(RegisterMsg)
 	if err != nil {
-		fmt.Printf("[KCP trySendRegisterMessage] Marshal error: %v\n", err)
+		Error("[KCP 尝试发送注册消息] 序列化失败", err)
 		return
 	}
-	//fmt.Printf("[KCP trySendRegisterMessage] Send register from %s\n", this.User.getID())
+	Log("[KCP 尝试发送注册消息] 发送注册消息，节点ID=", this.User.getID())
 	link.WriteTo(this.wrapToDataFrame(sentItem), true)
 }
 
@@ -494,7 +485,6 @@ func (this *KcpChannelWorker) processPackage(pkg IpPackage) {
 	if len(pkg.Data) > 0 {
 		var msg Message
 		err := common.UnmarshalAny(pkg.Data, &msg)
-		//fmt.Println("I received a message " + msg.Print())
 		if err != nil {
 			return
 		}
@@ -515,7 +505,6 @@ func (this *KcpChannelWorker) checkHash(msg *Message) bool {
 	HashValue := msg.Data
 	selfCalculatedHash := HashIDWithToken(msg.From, this.Token)
 	result := selfCalculatedHash == HashValue
-	//fmt.Printf("[KCP checkHash] From: %s, Expected: %s, Actual: %s, Result: %v\n", msg.From, selfCalculatedHash, HashValue, result)
 	return result
 }
 
@@ -546,17 +535,14 @@ func (this *KcpChannelWorker) handleRegisterMessage(pra string, msg *Message) {
 	}
 	this.MutexForKcpLinks.Lock()
 	defer this.MutexForKcpLinks.Unlock()
-	//fmt.Printf("[KCP handleRegisterMessage] Received register from %s, hash ok: %v\n", msg.From, this.checkHash(msg))
 	if msg.From == this.User.getID() {
 		if link, ok := this.KcpLinks[pra]; ok && link != nil {
-			//fmt.Printf("[KCP handleRegisterMessage] Close link %s due to hash or self\n", pra)
 			link.Close()
 		}
 		return
 	}
 	if link, ok := this.KcpLinks[pra]; ok && link != nil {
 		link.HasRecvRegister = true
-		//fmt.Printf("[KCP handleRegisterMessage] Register success for %s\n", pra)
 	}
 }
 
@@ -630,7 +616,7 @@ func (this *KcpChannelWorker) sendTo(nextHopNodeId string, msg *Message) {
 		for _, ra := range ras {
 			if link, ok := this.KcpLinks[ra]; ok {
 				if !link.HasRecvRegister {
-					//fmt.Println("KCP has not receive the register!")
+					Error("[KCP 发送消息] 目标节点 %s 未注册", nextHopNodeId)
 					continue
 				}
 				go func(ba []byte, link *KcpLink, important bool) {
@@ -656,7 +642,7 @@ func (this *KcpChannelWorker) broadCast(msg *Message) {
 			links := this.GetAllConns()
 			for _, link := range links {
 				if !link.HasRecvRegister && msg.Type != TcpRegister {
-					//fmt.Println("KCP has not receive the register for broadcast!")
+					Error("[KCP 广播消息] 目标节点 %s 未注册", msg.To)
 					continue
 				}
 				go func(link *KcpLink) {

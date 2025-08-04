@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -115,7 +114,7 @@ func (s *Server) handleWS(c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Println("WebSocket upgrade error:", err)
+		Error("WebSocket升级错误", "错误=", err)
 		return
 	}
 
@@ -156,12 +155,12 @@ func (s *Server) readLoop(ctx context.Context, client *ClientConnection) {
 		default:
 			_, message, err := client.Conn.ReadMessage()
 			if err != nil {
-				log.Println("Read error:", err)
+				Error("读取错误", "错误=", err)
 				return
 			}
 			var pkg api.MajulaPackage
 			if err := json.Unmarshal(message, &pkg); err != nil {
-				log.Println("JSON error:", err)
+				Error("JSON解析错误", "错误=", err)
 				continue
 			}
 			go s.handlePackage(client, pkg)
@@ -183,7 +182,7 @@ func (s *Server) writeLoop(ctx context.Context, client *ClientConnection) {
 			data, _ := json.Marshal(msg)
 			err := client.Conn.WriteMessage(websocket.TextMessage, data)
 			if err != nil {
-				log.Println("Write error:", err)
+				Error("写入错误", "错误=", err)
 				client.Cancel()
 				return
 			}
@@ -195,7 +194,7 @@ func (s *Server) writeLoop(ctx context.Context, client *ClientConnection) {
 // 参数：client - 客户端连接，pkg - 注册包。
 func (s *Server) handleClientRegisterPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	s.Node.AddClient(client.ID)
-	fmt.Println("Client registered:", client.ID)
+	Log("客户端已注册", "客户端ID=", client.ID)
 }
 
 // 处理客户端订阅包。
@@ -241,7 +240,7 @@ func (s *Server) handleSendPackage(client *ClientConnection, pkg api.MajulaPacka
 	content := pkg.Args["content"]
 
 	if !ok1 || !ok2 {
-		log.Println("SEND missing target_node or target_client")
+		Error("SEND缺少目标节点或目标客户端")
 		return
 	}
 
@@ -251,7 +250,7 @@ func (s *Server) handleSendPackage(client *ClientConnection, pkg api.MajulaPacka
 	}
 	dataBytes, err := common.MarshalAny(payload)
 	if err != nil {
-		log.Println("SEND json marshal failed:", err)
+		Error("SEND JSON序列化失败", "错误=", err)
 		return
 	}
 
@@ -343,7 +342,7 @@ func (s *Server) handleRPCCallPackage(client *ClientConnection, pkg api.MajulaPa
 
 	if !ok1 || !ok2 {
 		errInfo := "missing target_node or provider in RPC call"
-		log.Println(errInfo)
+		Error("错误信息", "错误=", errInfo)
 		client.SendCh <- api.MajulaPackage{
 			Method:   "RPC_RESULT",
 			Fun:      fun,
@@ -376,9 +375,9 @@ func (s *Server) handleRPCCallPackage(client *ClientConnection, pkg api.MajulaPa
 		if exists {
 			select {
 			case replyClient.SendCh <- resp:
-				log.Printf("Send to %s on %s succeed", fromClientId, targetNode)
+				Log("发送成功", "来源客户端=", fromClientId, "目标节点=", targetNode)
 			default:
-				log.Printf("client %s SendCh full", fromClientId)
+				Error("客户端发送通道已满", "客户端ID=", fromClientId)
 			}
 		}
 	}()
@@ -393,13 +392,13 @@ func (s *Server) handleFRPRegisterPackage(client *ClientConnection, pkg api.Maju
 	remoteAddr, ok4 := pkg.Args["remote_addr"].(string)
 
 	if !ok1 || !ok2 || !ok3 || !ok4 {
-		log.Println("frp Register missing args")
+		Error("FRP注册缺少参数")
 		return
 	}
 
 	err := s.Node.StubManager.RegisterFRPWithCode(code, localAddr, remoteNode, remoteAddr)
 	if err != nil {
-		log.Printf("Failed to Register FRP error: %v", err)
+		Error("FRP注册失败", "错误=", err)
 	}
 }
 
@@ -410,12 +409,12 @@ func (s *Server) handleFRPRegisterWithAddrPackage(client *ClientConnection, pkg 
 	remoteAddr, ok2 := pkg.Args["remote_addr"].(string)
 	remoteNode, ok3 := pkg.Args["remote_node"].(string)
 	if !ok1 || !ok2 || !ok3 {
-		log.Println("frp Register missing args")
+		Error("FRP注册缺少参数")
 	}
 
 	_, err := s.Node.StubManager.RegisterFRPWithoutCode(localAddr, remoteNode, remoteAddr)
 	if err != nil {
-		log.Printf("Failed to Register FRP error: %v", err)
+		Error("FRP注册失败", "错误=", err)
 	}
 }
 
@@ -428,12 +427,12 @@ func (s *Server) handleFRPRegisterTwoSidePackage(client *ClientConnection, pkg a
 	isServer, ok4 := pkg.Args["is_server"].(bool)
 
 	if !ok1 || !ok2 || !ok3 || !ok4 {
-		log.Println("frp Register two side missing args")
+		Error("FRP双向注册缺少参数")
 		return
 	}
 	err := s.Node.StubManager.RegisterFRPSimplified(code, remoteNode, targetAddr, isServer)
 	if err != nil {
-		log.Printf("Failed to Register FRP error: %v", err)
+		Error("FRP注册失败", "错误=", err)
 	}
 }
 
@@ -442,12 +441,12 @@ func (s *Server) handleFRPRegisterTwoSidePackage(client *ClientConnection, pkg a
 func (s *Server) handleStartFRPWithRegistrationPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	code, ok1 := pkg.Args["code"].(string)
 	if !ok1 {
-		log.Println("frp start missing args")
+		Error("FRP启动缺少参数")
 		return
 	}
 	err := s.Node.StubManager.RunFRPDynamicWithRegistration(code)
 	if err != nil {
-		log.Printf("Failed to start FRP with code: %v", err)
+		Error("FRP启动失败", "错误=", err)
 	}
 }
 
@@ -459,18 +458,18 @@ func (s *Server) handleStartFRPWithoutRegistrationPackage(client *ClientConnecti
 	remoteNode, ok3 := pkg.Args["remote_node"].(string)
 
 	if !ok1 || !ok2 || !ok3 {
-		log.Println("frp start missing args")
+		Error("FRP启动缺少参数")
 		return
 	}
 
 	_, err := s.Node.StubManager.RegisterFRPWithoutCode(localAddr, remoteNode, remoteAddr)
 	if err != nil {
-		log.Printf("Failed to Register FRP")
+		Error("FRP注册失败")
 		return
 	}
 	err = s.Node.StubManager.RunFRPDynamicWithoutRegistration(localAddr, remoteNode, remoteAddr)
 	if err != nil {
-		log.Printf("Failed to start FRP")
+		Error("FRP启动失败")
 		return
 	}
 }
@@ -480,13 +479,13 @@ func (s *Server) handleStartFRPWithoutRegistrationPackage(client *ClientConnecti
 func (s *Server) handleStartFRPWithLocalAddressPackage(client *ClientConnection, pkg api.MajulaPackage) {
 	localAddr, ok1 := pkg.Args["local_addr"].(string)
 	if !ok1 {
-		log.Println("frp start missing args")
+		Error("FRP启动缺少参数")
 		return
 	}
 
 	err := s.Node.StubManager.RunFRPDynamicWithRegistrationLocalAddr(localAddr)
 	if err != nil {
-		log.Printf("Failed to start FRP")
+		Error("FRP启动失败")
 		return
 	}
 }
@@ -497,12 +496,12 @@ func (s *Server) handleRegisterNginxFRPAndRunPackage(client *ClientConnection, p
 	var extraArgs map[string]string
 	extraRaw, ok := pkg.Args["extra_args"].(string)
 	if !ok {
-		log.Println("nginx frp args wrong")
+		Error("Nginx FRP参数错误")
 		return
 	}
 	err := json.Unmarshal([]byte(extraRaw), &extraArgs)
 	if err != nil {
-		log.Printf("Failed to unmarshal extra_args: %v", err)
+		Error("解析额外参数失败", "错误=", err)
 		return
 	}
 
@@ -510,12 +509,12 @@ func (s *Server) handleRegisterNginxFRPAndRunPackage(client *ClientConnection, p
 	remoteNode, ok2 := pkg.Args["remote_node"].(string)
 	hostAddr, ok3 := pkg.Args["remote_url"].(string)
 	if !ok1 || !ok2 || !ok3 {
-		log.Println("nginx frp args wrong")
+		Error("Nginx FRP参数错误")
 		return
 	}
 	err = s.RegisterNginxFrp(mappedAddr, remoteNode, hostAddr, extraArgs)
 	if err != nil {
-		log.Printf("Failed to Register and run Nginx frp error: %v", err)
+		Error("注册并运行Nginx FRP失败", "错误=", err)
 		return
 	}
 }
@@ -526,12 +525,12 @@ func (s *Server) handleUnregisterNginxFRPPackage(client *ClientConnection, pkg a
 	var extraArgs map[string]string
 	extraRaw, ok := pkg.Args["extra_args"].(string)
 	if !ok {
-		log.Println("nginx frp args wrong")
+		Error("Nginx FRP参数错误")
 		return
 	}
 	err := json.Unmarshal([]byte(extraRaw), &extraArgs)
 	if err != nil {
-		log.Printf("Failed to unmarshal extra_args: %v", err)
+		Error("解析额外参数失败", "错误=", err)
 		return
 	}
 
@@ -539,12 +538,12 @@ func (s *Server) handleUnregisterNginxFRPPackage(client *ClientConnection, pkg a
 	remoteNode, ok2 := pkg.Args["remote_node"].(string)
 	hostAddr, ok3 := pkg.Args["remote_url"].(string)
 	if !ok1 || !ok2 || !ok3 {
-		log.Println("nginx frp args wrong")
+		Error("Nginx FRP参数错误")
 		return
 	}
 	err = s.RemoveNginxFrp(mappedAddr, remoteNode, hostAddr, extraArgs)
 	if err != nil {
-		log.Printf("Failed to Register and run Nginx frp error: %v", err)
+		Error("注册并运行Nginx FRP失败", "错误=", err)
 		return
 	}
 }
@@ -556,12 +555,12 @@ func (s *Server) handleTransferFileToRemotePackage(client *ClientConnection, pkg
 	remoteNode, ok2 := pkg.Args["remote_node"].(string)
 	remotePath, ok3 := pkg.Args["remote_path"].(string)
 	if !ok1 || !ok2 || !ok3 {
-		log.Println("frp transfer missing args")
+		Error("FRP传输缺少参数")
 		return
 	}
 	err := s.Node.StubManager.TransferFileToRemoteWithoutRegistration(remoteNode, localPath, remotePath)
 	if err != nil {
-		log.Printf("Failed to transfer file to remote: %v", err)
+		Error("向远程传输文件失败", "错误=", err)
 		return
 	}
 }
@@ -573,11 +572,11 @@ func (s *Server) handleDownloadFileFromRemotePackage(client *ClientConnection, p
 	remoteNode, ok2 := pkg.Args["remote_node"].(string)
 	remotePath, ok3 := pkg.Args["remote_path"].(string)
 	if !ok1 || !ok2 || !ok3 {
-		log.Println("frp download file missing args")
+		Error("FRP下载文件缺少参数")
 	}
 	err := s.Node.StubManager.DownloadFileFromRemoteWithoutRegistration(remoteNode, remotePath, localPath)
 	if err != nil {
-		log.Printf("Failed to download file from remote: %v", err)
+		Error("从远程下载文件失败", "错误=", err)
 		return
 	}
 }
@@ -721,7 +720,7 @@ func (s *Server) UnregisterClientRpcServices(clientID string) {
 	for funcName, providers := range s.Node.RpcFuncs {
 		if _, ok := providers[clientID]; ok {
 			delete(providers, clientID)
-			log.Printf("Unregistered RPC: %s by client %s", funcName, clientID)
+			Error("未注册的RPC", "函数名=", funcName, "客户端ID=", clientID)
 		}
 		if len(providers) == 0 {
 			delete(s.Node.RpcFuncs, funcName)
@@ -785,12 +784,12 @@ func (s *Server) handleHTTP(c *gin.Context) {
 		return
 	}
 
-	log.Printf("HTTP client connected: %s", clientID)
+	Log("HTTP客户端已连接", "客户端ID=", clientID)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("HTTP client %s disconnected", clientID)
+			Log("HTTP客户端已断开", "客户端ID=", clientID)
 			return
 		case msg, ok := <-client.SendCh:
 			if !ok {
@@ -870,7 +869,7 @@ func (s *Server) handleSubscribe(c *gin.Context) {
 		delete(s.Clients, clientID)
 		s.Lock.Unlock()
 		s.Node.RemoveClient(clientID)
-		log.Printf("Temporary client %s unsubscribed and removed", clientID)
+		Log("临时客户端已取消订阅并移除", "客户端ID=", clientID)
 	}()
 
 	s.Node.addLocalSub(topic, clientID, func(topic, from, to string, content []byte) {
@@ -883,7 +882,7 @@ func (s *Server) handleSubscribe(c *gin.Context) {
 			Args:   args,
 		}:
 		default:
-			log.Printf("Client %s send buffer full, message dropped", clientID)
+			Error("客户端发送缓冲区已满，消息被丢弃", "客户端ID=", clientID)
 		}
 	})
 
@@ -898,7 +897,7 @@ func (s *Server) handleSubscribe(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Temporary client %s subscribed to topic %s", clientID, topic)
+	Log("临时客户端已订阅主题", "客户端ID=", clientID, "主题=", topic)
 
 	for {
 		select {
@@ -956,7 +955,7 @@ func (s *Server) handlePublish(c *gin.Context) {
 		delete(s.Clients, clientID)
 		s.Lock.Unlock()
 		s.Node.RemoveClient(clientID)
-		log.Printf("Client %s removed after publish", clientID)
+		Log("客户端发布后已移除", "客户端ID=", clientID)
 	}()
 
 	s.Node.publishOnTopic(topic, message)
@@ -1020,7 +1019,7 @@ func (s *Server) handleRpc(c *gin.Context) {
 		delete(s.Clients, clientID)
 		s.Lock.Unlock()
 		s.Node.RemoveClient(clientID)
-		log.Printf("Temporary client %s removed after RPC", clientID)
+		Log("临时客户端RPC后已移除", "客户端ID=", clientID)
 	}()
 
 	go func() {
@@ -1081,7 +1080,7 @@ func (s *Server) handleSend(c *gin.Context) {
 		delete(s.Clients, clientID)
 		s.Lock.Unlock()
 		s.Node.RemoveClient(clientID)
-		log.Printf("Temporary client %s removed after SEND", clientID)
+		Log("临时客户端发送后已移除", "客户端ID=", clientID)
 	}()
 
 	payload := map[string]interface{}{
@@ -1146,7 +1145,7 @@ func (s *Server) handleListRpc(c *gin.Context) {
 		delete(s.Clients, clientID)
 		s.Lock.Unlock()
 		s.Node.RemoveClient(clientID)
-		log.Printf("Temporary client %s removed after listrpc", clientID)
+		Log("临时客户端列出RPC后已移除", "客户端ID=", clientID)
 	}()
 
 	paramsRpc := map[string]interface{}{
@@ -1283,7 +1282,7 @@ func (s *Server) handleFileUpload(c *gin.Context) {
 	go func() {
 		err := s.Node.StubManager.TransferFileToRemoteWithoutRegistration(remoteNode, localPath, remotePath)
 		if err != nil {
-			log.Printf("UPLOAD_FILE_DYNAMIC error: %v", err)
+			Error("动态文件上传错误", "错误=", err)
 		}
 	}()
 
@@ -1312,7 +1311,7 @@ func (s *Server) handleFileDownload(c *gin.Context) {
 	go func() {
 		err := s.Node.StubManager.DownloadFileFromRemoteWithoutRegistration(remoteNode, remotePath, localPath)
 		if err != nil {
-			log.Printf("DOWNLOAD_FILE_DYNAMIC error: %v", err)
+			Error("动态文件下载错误", "错误=", err)
 		}
 	}()
 

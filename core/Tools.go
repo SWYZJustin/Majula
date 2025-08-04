@@ -6,7 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 )
 
 // Item represents an item in the priority queue
@@ -134,4 +138,144 @@ func getString(args map[string]interface{}, key, def string) string {
 		return fmt.Sprintf("%v", v)
 	}
 	return def
+}
+
+const (
+	LogLevelDetail = iota
+	LogLevelDebug
+	LogLevelNormal
+	LogLevelWarning
+	LogLevelError
+	LogLevelFatal
+	LogLevelMark
+)
+
+var (
+	LogLevel int = LogLevelMark
+)
+
+// 将日志等级转成字符串
+func getLogLevelString(logLevel int) string {
+	if logLevel >= LogLevelMark {
+		return "MARK"
+	} else if logLevel >= LogLevelFatal {
+		return "FATAL"
+	} else if logLevel >= LogLevelError {
+		return "ERROR"
+	} else if logLevel >= LogLevelWarning {
+		return "WARNING"
+	} else if logLevel >= LogLevelNormal {
+		return "NORMAL"
+	} else if logLevel >= LogLevelDebug {
+		return "DEBUG"
+	} else {
+		return "DETAIL"
+	}
+}
+
+// 根据字符串设置日志等级
+func SetLogLevel(slogLevel string) {
+	for k, v := range map[string]int{
+		"detail":  LogLevelDetail,
+		"debug":   LogLevelDebug,
+		"normal":  LogLevelNormal,
+		"warning": LogLevelWarning,
+		"error":   LogLevelError,
+		"fatal":   LogLevelFatal,
+		"mark":    LogLevelMark,
+	} {
+		if strings.Contains(strings.ToLower(slogLevel), k) {
+			LogLevel = v
+			break
+		}
+	}
+}
+
+// 格式化日志消息
+func formatLog(msg ...interface{}) string {
+	if len(msg) == 0 {
+		return ""
+	}
+	ret := make([]string, len(msg))
+	for i, m := range msg {
+		ret[i] = fmt.Sprintf("%+v", m)
+	}
+	return strings.Join(ret, " ")
+}
+
+// 核心日志输出函数
+func logOnLevel_(level int, callDeep int, msg ...interface{}) bool {
+	if level >= LogLevel {
+		funcName, file, line, _ := runtime.Caller(callDeep)
+		_, short := filepath.Split(file)
+		file = short
+		out := os.Stdout
+		if level >= LogLevelError {
+			out = os.Stderr
+		}
+		if len(msg) > 0 {
+			fmt.Fprintf(out, "%s %s %s:%d %s %s\n",
+				getLogLevelString(level),
+				time.Now().Format("15:04:05.000000"),
+				file, line,
+				runtime.FuncForPC(funcName).Name(),
+				formatLog(msg...))
+		} else {
+			fmt.Fprintf(out, "%s %s %s:%d %s\n",
+				getLogLevelString(level),
+				time.Now().Format("15:04:05.000000"),
+				file, line,
+				runtime.FuncForPC(funcName).Name())
+		}
+		return true
+	}
+	return false
+}
+
+// 常用日志函数
+func Log(msg ...interface{}) {
+	logOnLevel_(LogLevelNormal, 2, msg...)
+}
+
+func Debug(msg ...interface{}) {
+	logOnLevel_(LogLevelDebug, 2, msg...)
+}
+
+func Warning(msg ...interface{}) {
+	logOnLevel_(LogLevelWarning, 2, msg...)
+}
+
+func Error(msg ...interface{}) {
+	logOnLevel_(LogLevelError, 2, msg...)
+}
+
+func MarkIt(msg ...interface{}) {
+	logOnLevel_(LogLevelMark, 2, msg...)
+}
+
+func LogOnLevel(level int, msg ...interface{}) bool {
+	return logOnLevel_(level, 2, msg...)
+}
+
+func LogIf(cond bool, msg ...interface{}) bool {
+	if cond {
+		logOnLevel_(LogLevelNormal, 2, msg...)
+	}
+	return cond
+}
+
+func LogOnError(err error, msg ...interface{}) error {
+	if err != nil {
+		msg = append([]interface{}{err.Error()}, msg...)
+		logOnLevel_(LogLevelError, 2, msg...)
+	}
+	return err
+}
+
+func PanicOnError(err error, msg ...interface{}) {
+	if err != nil {
+		msg = append([]interface{}{fmt.Sprintf("Exit On Error : %s", err.Error())}, msg...)
+		logOnLevel_(LogLevelError, 2, msg...)
+		panic(err)
+	}
 }

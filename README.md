@@ -1,232 +1,298 @@
-# Majula - Distributed Communication Middleware
+# Majula - 分布式通信中间件
 
-> ⚠️ **Important Notice**: This project is currently in testing and optimization phase. Many potential issues exist. Not recommended for production use. Testing and feedback are welcome, but please use with caution.
 
-Majula is a lightweight distributed communication middleware written in Go. It provides inter-node message passing, RPC, topic-based publish/subscribe, NAT traversal, dynamic Nginx reverse proxy, and more. Majula is suitable for microservices, distributed systems, NAT traversal, and real-time messaging scenarios.
+> **项目简介**：Majula 是一个用 Go 语言编写的轻量级分布式通信中间件。其设计目的在于为节点提供了一套通信、控制与协作的功能集成，并加以弱网优化与节点的自发现机制，使得对边端节点的控制更加容易和方便。
 
-The name "Majula" comes from Dark Souls 2, representing the game's Firelink Shrine - perhaps the warmest place in the Souls series. People meet during their adventures and gather around the Firelink Shrine. I hope my middleware can help connect people - or more likely, devices.
+> **核心特性**：提供节点间消息传递、RPC、基于主题的发布/订阅、NAT 穿透、动态 Nginx 远端反向代理等功能，同时提供了节点选举与基于Raft和leveldb的分布式一致性存储来促进节点协作，辅以配合的信令服务器进行简便的节点自动发现和连接功能。
+
+> **应用场景**：潜在的应用场景有中控节点对边缘节点的远程控制，边缘节点之间的协作等等，适用于一些较为轻量化的场景。
+---
+
+## 核心功能
+
+### 分布式节点管理
+每个节点都有唯一 ID，支持节点发现、心跳检测和链路管理。节点通过 TCP 或 KCP 协议建立连接，形成网络拓扑。系统维护节点间连接状态，处理节点上线/下线场景。
+
+### 轻量级消息路由
+支持点对点直接通信、基于主题的发布/订阅和广播消息。消息路由根据目标节点选择合适路径，支持消息重试机制。发布/订阅模式允许节点订阅主题并接收相关消息。
+
+### RPC 远程调用
+支持在节点间注册和调用自定义服务。支持同步和异步调用模式，能够指定目标节点和服务提供者。服务可由节点或是连接到节点的客户端进行动态提供。
+
+### WebSocket 和 HTTP API
+提供统一的 API 接口，支持 WebSocket 和 HTTP 客户端。WebSocket 接口提供实时双向通信，HTTP 接口便于集成和测试。所有 API 使用 JSON 数据格式。
+
+### 高性能 KCP 通道
+除 TCP 连接外，还支持基于 UDP 的 KCP 通道。KCP 通道在弱网络环境下提供更低延迟，适用于对网络质量要求较高的场景。通讯信息使用messagepack进行序列化，减小信息大小。
+
+### 信令服务器与节点发现
+提供基于 UDP 打洞技术的信令服务器，支持自动节点发现和连接协调。信令服务器作为节点间的中介，帮助它们发现彼此并建立直接连接，适用于各种 NAT 环境。
+
+### 分布式共识与协作
+实现基于 Raft 的分布式共识算法，提供强一致性的分布式数据管理。支持静态核心集群和动态学习者机制，确保集群稳定性同时提供扩展性。
+
+### 分布式选举
+提供轻量级的分布式选举系统，不依赖复杂共识算法，实现快速故障转移。支持多选举组，适用于需要高可用性但不要求严格一致性的场景。
 
 ---
 
-## 🌟 Core Features
+## 快速开始
 
-### Distributed Node Management
-Each node has a unique ID and supports node discovery, heartbeat detection, and link management. Nodes establish connections via TCP or KCP protocols, forming network topologies. The system maintains inter-node connection states and handles node online/offline scenarios.
-
-### Lightweight Message Routing
-Supports point-to-point direct communication, topic-based publish/subscribe, and broadcast messaging. Message routing selects paths based on target nodes and supports message retry mechanisms. The publish/subscribe pattern allows nodes to subscribe to topics and receive relevant messages.
-
-### RPC Remote Invocation
-Supports registering and invoking custom services between nodes. Supports both synchronous and asynchronous invocation modes, with the ability to specify target nodes and service providers. The RPC system handles network transmission, serialization, and other details.
-
-### WebSocket & HTTP API
-Provides unified API interfaces supporting WebSocket and HTTP clients. WebSocket interfaces offer real-time bidirectional communication, while HTTP interfaces facilitate integration and testing. All APIs use JSON data format.
-
-### High-Performance KCP Channels
-In addition to TCP connections, supports UDP-based KCP channels. KCP channels provide lower latency in weak network environments, suitable for scenarios requiring high network quality.
-
----
-
-## 🚀 Quick Start
-
-### 1. Install Dependencies
+### 1. 安装依赖
 ```bash
 go mod tidy
 ```
 
-### 2. Start Signaling Server (Optional)
+### 2. 启动信令服务器（可选）
 ```bash
 go run SignalingServerFromYaml.go
 ```
 
-### 3. Start Local Node
+### 3. 启动本地节点
 ```bash
-# Use default configuration (no signaling server connection)
+# 使用默认配置（不连接信令服务器）
 go run MajulaNodeFromYaml.go
 
-# Use custom configuration
+# 使用自定义配置
 go run MajulaNodeFromYaml.go MajulaNode1.yaml
 
-# Enable signaling server connection
+# 启用信令服务器连接
 go run MajulaNodeFromYaml.go MajulaNodeWithSignaling.yaml
+
+
 ```
 
-### Channel Protocol Configuration
-Majula supports both TCP and KCP channel protocols. TCP channels provide reliable ordered transmission with TLS encryption support. KCP channels are UDP-based, performing better in weak network environments but without TLS support.
+具体的配置文件设置请参照提供的模板YAML配置文件。
+
+### 节点配置模板
+
+#### 基础节点配置 (MajulaNodeTemplate.yaml)
+```yaml
+# 节点基础配置
+node:
+  id: "node-001"                    # 节点唯一标识
+  name: "My Node"                   # 节点名称
+  port: 18080                       # 节点监听端口
+  
+# 通道配置
+channels:
+  tcp:
+    enabled: true                   # 启用TCP通道
+    port: 18081                     # TCP通道端口
+    tls_enabled: false              # 是否启用TLS加密
+  
+  kcp:
+    enabled: false                  # 启用KCP通道
+    port: 18082                     # KCP通道端口
+
+# 信令服务器配置（可选）
+signaling:
+  enabled: false                    # 是否启用信令服务器连接
+  url: "ws://localhost:18090"       # 信令服务器地址
+  udp_port: 18091                   # 信令服务器UDP端口
+
+# Raft配置
+raft:
+  enabled: false                    # 是否启用Raft共识
+  groups: []                        # Raft组配置列表
+
+# 选举配置
+election:
+  enabled: false                    # 是否启用分布式选举
+  groups: []                        # 选举组配置列表
+```
+
+#### 启用信令服务器的配置 (MajulaNodeWithSignaling.yaml)
+```yaml
+# 节点基础配置
+node:
+  id: "node-with-signaling"
+  name: "Node with Signaling"
+  port: 18080
+
+# 通道配置
+channels:
+  tcp:
+    enabled: true
+    port: 18081
+    tls_enabled: false
+  
+  kcp:
+    enabled: true                   # 启用KCP通道
+    port: 18082
+
+# 信令服务器配置
+signaling:
+  enabled: true                     # 启用信令服务器连接
+  url: "ws://localhost:18090"
+  udp_port: 18091
+  reconnect_interval: "30s"
+  heartbeat_interval: "30s"
+
+# 其他配置...
+```
+
+### 通道协议配置
+Majula 支持 TCP 和 KCP 通道协议。TCP 通道提供可靠有序传输，支持 TLS 加密。KCP 通道基于 UDP，在弱网络环境下表现更好，但不支持 TLS。
 
 ---
 
-## 📡 API Interface Overview
+## API 接口概览
 
-Majula provides API interfaces with all endpoints under the `/majula` path, supporting GET and POST methods.
+Majula 提供 API 接口，所有端点都在 `/majula` 路径下，支持 GET 和 POST 方法。
 
-### Core Function Interfaces
-- **WebSocket Connection**: Provides real-time bidirectional communication
-- **Message Sending/Receiving**: Supports point-to-point and broadcast message delivery
-- **Topic Subscription**: Supports topic-based publish/subscribe patterns
-- **RPC Invocation**: Supports remote procedure calls, including synchronous and asynchronous modes
-- **Private Messages**: Supports private message delivery between nodes
+### 核心功能接口
+- **WebSocket 连接**：提供实时双向通信
+- **消息发送/接收**：支持点对点和广播消息传递
+- **主题订阅**：支持基于主题的发布/订阅模式
+- **RPC 调用**：支持远程过程调用，包括同步和异步模式
+- **私密消息**：支持节点间私密消息传递
 
-### Advanced Function Interfaces
-- **RPC Service Management**: Register, unregister, and query RPC services
-- **Nginx Proxy Management**: Dynamically configure reverse proxy rules
-- **FRP Tunnel Management**: Configure and manage NAT traversal tunnels
-- **File Transfer**: Supports file upload and download between nodes
-
-### System Management Interfaces
-- **Node Information**: Query node status and connection information
-- **Health Check**: Monitor system operational status
-- **Configuration Management**: Dynamically adjust system configuration
+### 高级功能接口
+- **RPC 服务管理**：注册、注销和查询 RPC 服务
+- **Nginx 代理管理**：动态配置反向代理规则
+- **FRP 隧道管理**：配置和管理 NAT 穿透隧道
+- **基于 FRP 的文件传输**：支持节点间文件上传和下载
+- **基于Raft的动态Learner加入**：支持节点动态加入配置的Raft组，实现基于Raft的动态同步
+- **节点选举**：支持节点动态加入选举组，达成最终一致性的选举
+- **信令服务器管理**：节点发现、连接协调和状态管理
 
 ---
 
-## 🧩 Development Tools
+## 开发工具
 
 ### Go SDK
-Majula provides a Go SDK that encapsulates core functionality. The SDK offers high-level APIs that handle underlying network communication details.
+Majula 提供封装核心功能的 Go SDK。SDK 提供高级 API，处理底层网络通信细节。
 
-### Client Libraries
-Provides client libraries supporting both WebSocket and HTTP communication methods. Client libraries handle connection management, message serialization, error retry, and other details.
+### 客户端库
+提供支持 WebSocket 和 HTTP 通信方式的客户端库。客户端库处理连接管理、消息序列化、错误重试等细节。
 
-### Configuration Management
-Supports YAML format configuration files for node parameters, network settings, security options, and more.
-
----
-
-## 🌐 FRP NAT Traversal
-
-### Tunnel Functionality
-Built-in FRP tunnel functionality solves inter-node communication problems in NAT environments. Supports port mapping, file transfer, service exposure, and more. Through FRP tunnels, nodes in different network environments can establish direct connections.
-
-### Dynamic Port Mapping
-Supports dynamic configuration of port mapping rules without manual firewall configuration. Nodes can automatically register and deregister port mappings, achieving flexible network access control.
-
-### File Transfer
-Implements file transfer functionality between nodes based on FRP tunnels. Supports large file transfer, resume from breakpoint, transfer progress monitoring, and other features.
-
-### Service Exposure
-Can expose local services to remote nodes through FRP tunnels, enabling cross-network service access. Supports HTTP, TCP, UDP, and other protocols.
+### 配置管理
+支持 YAML 格式配置文件，用于节点参数、网络设置、安全选项等。
 
 ---
 
-## 🔄 Dynamic Nginx Reverse Proxy
+## FRP NAT 穿透
 
-### Proxy Functionality
-Provides dynamic Nginx reverse proxy functionality to expose local services to remote nodes. Supports HTTP service mapping, load balancing, and more. Proxy rules can be dynamically configured through API calls.
+> **技术原理**：FRP的设计基于滑窗机制，利用发送端和接收端的滑窗来进行数据流的发送与接收，确保了数据流的完整与顺序。
 
-### Dynamic Configuration
-Supports runtime dynamic addition, modification, and deletion of proxy rules without service restart. Real-time proxy configuration updates can be achieved through simple API calls.
+### 隧道功能
+内置 FRP 隧道功能，解决 NAT 环境下的节点间通信问题。支持端口映射、基于 FRP 的文件传输、服务暴露等。通过 FRP 隧道，不同网络环境中的节点可以建立直接连接。
 
-### Load Balancing
-Supports multiple load balancing strategies, automatically adjusting traffic distribution based on node load conditions. Provides health check functionality to automatically remove faulty nodes.
+### 动态端口映射
+支持动态配置端口映射规则，无需手动配置防火墙。节点可以自动注册和注销端口映射，实现灵活的网络访问控制。
 
-### SSL Termination
-Supports SSL certificate management and HTTPS proxy, providing secure encrypted communication. Multiple domains and certificates can be configured for flexible SSL management.
+### 基于 FRP 的文件传输
+基于 FRP 隧道实现节点间文件传输功能。支持大文件传输、断点续传、传输进度监控等特性。
 
----
-
-## 📡 Signaling Server
-
-### UDP Hole Punching
-Provides a signaling server based on UDP hole punching technology, supporting automatic node discovery and connection coordination. The signaling server acts as an intermediary between nodes, helping them discover each other and establish direct connections. NAT traversal is achieved through UDP hole punching technology, suitable for various NAT environments.
-
-### Connection Coordination
-When nodes need to establish P2P connections, the signaling server assists in exchanging connection information for UDP hole punching. Supports penetration strategies for multiple NAT types, including symmetric, cone, and port-restricted NATs.
-
-### State Management
-Maintains state information for all connected nodes, including node online status, connection quality, service capabilities, and more. Provides node status query and monitoring functionality.
-
-### Message Relay
-When direct connections cannot be established, the signaling server can act as a message relay to ensure communication reliability between nodes.
+### 服务暴露
+可以通过 FRP 隧道将本地服务暴露给远程节点，实现跨网络服务访问。支持 HTTP、TCP、UDP 等协议。
 
 ---
 
-## ⚡ Distributed Consensus
+## 动态 Nginx 反向代理
 
-### Raft Consensus Algorithm
-Majula implements the Raft consensus algorithm, providing strongly consistent distributed data management. Each Raft group has independent leader election, log replication, and state machines.
+> **设计理念**：该功能耦合了Nginx的反向代理功能与FRP的端口映射机制，实现了基于Nginx和FRP的远程端口代理。
 
-### Multi-Group Support
-A single node can participate in multiple independent Raft groups, each managing different data. This design allows data partitioning based on business requirements.
+### 代理功能
+提供动态 Nginx 反向代理功能，将本地服务暴露给远程节点。支持 HTTP 服务映射、代理转发等。代理规则可以通过 API 调用动态配置。
 
-### Static Core Cluster
-Core nodes are statically defined in configuration files, ensuring cluster stability. Core nodes participate in all consensus decisions, guaranteeing data consistency.
+### 动态配置
+支持运行时动态添加、修改和删除代理规则，无需重启服务。通过简单的 API 调用即可实现实时代理配置更新。
 
-### Dynamic Learners
-Supports dynamically adding learner nodes that can read data but do not participate in consensus decisions. Suitable for data synchronization, backup, and other scenarios.
-
----
-
-## 🏛️ Distributed Election
-
-### Lightweight Design
-The election system adopts a lightweight design, not relying on complex consensus algorithms, providing fast failover capabilities. Suitable for scenarios requiring high availability but not strict consistency.
-
-### Three-State Mechanism
-Nodes have three states during election: busy (initializing), standby (ready to take over), and on-duty (current leader). State transitions are based on heartbeat and timeout mechanisms.
-
-### Failure Detection
-Detects node failures through heartbeat mechanisms. When a leader node fails, standby nodes take over. Failure detection time is configurable.
-
-### Multiple Election Groups
-Supports multiple independent election groups, each conducting leader election independently. Suitable for high availability requirements of different business modules.
-
-### Application Scenarios
-- **API Gateway High Availability**: Multiple gateway nodes, one active
-- **Task Scheduler**: Avoid duplicate task execution
-- **Service Discovery**: Primary service coordinator
-- **Load Balancer**: Primary load balancer with backup
+### 代理转发
+支持 HTTP 服务代理转发，将本地服务暴露给远程节点。提供健康检查功能，确保代理服务的可用性。
 
 ---
 
-## 🔧 Implemented Features
+## 信令服务器
 
-### Network Optimization
-- **Connection Pool Management**: Manages connection pools for connection reuse
-- **Traffic Control**: Implements connection rate limiting to prevent system overload
-- **Timeout Retry**: Handles network timeout and retry logic
+> **核心机制**：轻量级的信令服务器基于UDP打洞机制，通过公网的信令服务器可以提供节点之间的自发现与连接自动创建的功能。
 
-### Security Mechanisms
-- **TLS Encryption**: Supports TLS encrypted communication
-- **Identity Authentication**: Supports token-based identity authentication
-- **Access Control**: Supports IP whitelist and access permission control
+### UDP 打洞
+提供基于 UDP 打洞技术的信令服务器，支持自动节点发现和连接协调。信令服务器作为节点间的中介，帮助它们发现彼此并建立直接连接。通过 UDP 打洞技术实现 NAT 穿透，适用于各种 NAT 环境。
 
-### Monitoring and Debugging
-- **Logging System**: Supports structured logging and log level control
-- **Health Check**: Provides system health status check interfaces
-- **Debug Tools**: Provides debugging interfaces and tools
+### 消息中继
+当无法建立直接连接时，信令服务器可以作为消息中继，确保节点间通信可靠性。
 
 ---
 
-## ⚙️ System Requirements
+## 分布式共识
 
-- **Go Version**: 1.18 or higher
-- **Operating System**: Supports Linux, macOS, Windows
-- **Network**: Supports TCP/UDP network communication
-- **Memory**: Recommend at least 512MB available memory
-- **Storage**: Supports local file system storage
+> **架构设计**：实现了分布式的Raft共识算法，用于确保节点数据管理之间的强一致性，同时采取了静态核心集群+动态学习者的机制，用于确保Raft核心组的稳定并辅以一定的扩展性和动态性。
 
----
+### Raft 共识算法
+Majula 实现 Raft 共识算法，提供强一致性的分布式数据管理。每个 Raft 组都有独立的领导者选举、日志复制和状态机。
 
-## 📖 Project Structure
+### 多组支持
+单个节点可以参与多个独立的 Raft 组，每个组管理不同的数据。这种设计允许根据业务需求进行数据分区。
 
-- **core/**: Core logic modules, including node management, message routing, RPC framework, etc.
-- **api/**: Client SDK and API definitions
-- **server/**: Signaling server implementation
-- **example/**: Example code and usage demonstrations
-- **MajulaNodeFromYaml.go**: Node startup entry program
-- **SignalingServerFromYaml.go**: Signaling server startup entry program
-- **MajulaNodeTemplate.yaml**: Node configuration template
-- **SignalingServerTemplate.yaml**: Signaling server configuration template
+### 静态核心集群
+核心节点在配置文件中静态定义，确保集群稳定性。核心节点参与所有共识决策，保证数据一致性。
+
+### 动态学习者
+支持动态添加学习者节点，可以读取数据但不参与共识决策。适用于数据同步、备份等场景。动态者通过一套推荐流程加入Raft组。Raft组通过决议实现学习者加入的一致性。
 
 ---
 
-## 💡 Contact and Contributions
+## 分布式选举
 
-For suggestions, bug reports, or contributions, please submit Issues or PRs! We welcome any form of contribution, including but not limited to:
+> **设计思路**：分布式选举是基于Raft的第一段流程选举设计的，在设计上提供了更快的响应速度和优雅放弃机制，实现了节点之间的最终一致性选举。
 
-- Feature suggestions and requirement feedback
-- Code improvements and optimizations
-- Documentation improvements and translations
-- Test cases and example code
-- Performance optimizations and bug fixes
+### 轻量级设计
+选举系统采用轻量级设计，不依赖复杂的共识算法，提供快速故障转移能力。适用于需要高可用性但不要求严格一致性的场景。
+
+### 三状态机制
+节点在选举过程中有三种状态：忙碌（初始化）、待命（准备接管）和值班（当前领导者）。状态转换基于心跳和超时机制。
+
+### 多选举组
+支持多个独立的选举组，每个组独立进行领导者选举。适用于不同业务模块的高可用性要求。
+
+---
+
+## 额外系统特点
+
+> **系统优化**：Majula 在性能、安全性和可观测性方面进行了全面优化，确保在各种网络环境下都能稳定运行。
+
+### 网络优化
+- **连接池管理**：管理连接池实现连接复用
+- **流量控制**：实现连接速率限制防止系统过载
+- **超时重试**：处理网络超时和重试逻辑
+
+### 安全机制
+- **TLS 加密**：支持 TLS 加密通信
+- **身份认证**：支持基于令牌的身份认证
+- **访问控制**：支持 IP 白名单和访问权限控制
+
+### 监控和调试
+- **日志系统**：支持结构化日志和日志级别控制
+- **调试工具**：提供调试接口和工具
+
+---
+
+## 项目结构
+
+> **代码组织**：项目采用模块化设计，核心功能、API接口、服务器实现和示例代码分别组织在不同目录中，便于维护和扩展。
+
+- **core/**：核心逻辑模块，包括节点管理、消息路由、RPC 框架等
+- **api/**：客户端 SDK 和 API 定义
+- **server/**：信令服务器实现
+- **example/**：示例代码和使用演示
+- **MajulaNodeFromYaml.go**：节点启动入口程序
+- **SignalingServerFromYaml.go**：信令服务器启动入口程序
+- **MajulaNodeTemplate.yaml**：节点配置模板
+- **SignalingServerTemplate.yaml**：信令服务器配置模板
+
+---
+
+## 联系和贡献
+
+> **开源协作**：Majula 是一个开源项目，我们欢迎社区贡献。无论是功能建议、代码改进还是文档完善，都是对项目的宝贵贡献。
+
+如有建议、错误报告或贡献，请提交 Issues 或 PR！我们欢迎任何形式的贡献，包括但不限于：
+
+- 功能建议和需求反馈
+- 代码改进和优化
+- 文档改进和翻译
+- 测试用例和示例代码
+- 性能优化和错误修复

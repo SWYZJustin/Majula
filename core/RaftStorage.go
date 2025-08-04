@@ -10,16 +10,16 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-// Storage 封装了基于LevelDB的Raft持久化存储，支持日志、元数据、状态机KV的读写。
+// Storage 封装了基于LevelDB的Raft持久化存储，支持日志、元数据、状态机键值对的读写。
+// Storage 存储结构体，包含LevelDB数据库实例和节点ID
 type Storage struct {
 	db     *leveldb.DB // LevelDB数据库实例
 	NodeId string      // 当前节点ID，用于隔离多节点数据
 }
 
 // NewStorage 创建一个新的Storage实例，打开指定路径的LevelDB。
-// path: LevelDB文件路径
-// nodeId: 节点ID（用于key前缀隔离）
-// 返回：*Storage, error
+// 参数：path - LevelDB文件路径，nodeId - 节点ID（用于键前缀隔离）
+// 返回：Storage指针和错误信息
 func NewStorage(path, nodeId string) (*Storage, error) {
 	db, err := leveldb.OpenFile(path, nil)
 	if err != nil {
@@ -28,7 +28,8 @@ func NewStorage(path, nodeId string) (*Storage, error) {
 	return &Storage{db: db, NodeId: nodeId}, nil
 }
 
-// Close 关闭底层LevelDB数据库。
+// Close 关闭底层LevelDB数据库
+// 返回：错误信息
 func (s *Storage) Close() error {
 	if s.db == nil {
 		return nil // 内存模式，无需关闭
@@ -36,18 +37,19 @@ func (s *Storage) Close() error {
 	return s.db.Close()
 }
 
-// makeKey 统一生成带 NodeId 和 Group 前缀的 Key。
-// 格式: node:<nodeId>:group:<group>:<category>:<key>
+// makeKey 统一生成带节点ID和组前缀的键
+// 格式：node:<节点ID>:group:<组名>:<类别>:<键名>
+// 参数：group - 组名，category - 类别，key - 键名
+// 返回：字节数组形式的键
 func (s *Storage) makeKey(group, category, key string) []byte {
 	return []byte(fmt.Sprintf("node:%s:group:%s:%s:%s", s.NodeId, group, category, key))
 }
 
 // -------------------- 日志存储 --------------------
 
-// SaveLog 保存单条日志到LevelDB。
-// group: 组ID
-// entry: 日志条目
-// 返回：error
+// SaveLog 保存单条日志到LevelDB
+// 参数：group - 组ID，entry - 日志条目
+// 返回：错误信息
 func (s *Storage) SaveLog(group string, entry RaftLogEntry) error {
 	if s.db == nil {
 		return nil // 内存模式，不持久化
@@ -61,10 +63,9 @@ func (s *Storage) SaveLog(group string, entry RaftLogEntry) error {
 	return s.db.Put(fullKey, data, nil)
 }
 
-// GetLog 获取指定索引的日志。
-// group: 组ID
-// index: 日志索引
-// 返回：*RaftLogEntry, error
+// GetLog 获取指定索引的日志
+// 参数：group - 组ID，index - 日志索引
+// 返回：RaftLogEntry指针和错误信息
 func (s *Storage) GetLog(group string, index int64) (*RaftLogEntry, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("no storage available")
@@ -80,10 +81,9 @@ func (s *Storage) GetLog(group string, index int64) (*RaftLogEntry, error) {
 	return &entry, err
 }
 
-// DeleteLogsBefore 删除index之前的所有日志。
-// group: 组ID
-// index: 截止索引（不含）
-// 返回：error
+// DeleteLogsBefore 删除指定索引之前的所有日志
+// 参数：group - 组ID，index - 截止索引（不含）
+// 返回：错误信息
 func (s *Storage) DeleteLogsBefore(group string, index int64) error {
 	if s.db == nil {
 		return nil // 内存模式，不持久化
@@ -103,9 +103,9 @@ func (s *Storage) DeleteLogsBefore(group string, index int64) error {
 	return nil
 }
 
-// LoadLogs 加载指定group的所有日志，按index升序排列。
-// group: 组ID
-// 返回：[]RaftLogEntry, error
+// LoadLogs 加载指定组的所有日志，按索引升序排列
+// 参数：group - 组ID
+// 返回：RaftLogEntry切片和错误信息
 func (s *Storage) LoadLogs(group string) ([]RaftLogEntry, error) {
 	if s.db == nil {
 		return []RaftLogEntry{}, nil // 内存模式，返回空日志
@@ -128,7 +128,9 @@ func (s *Storage) LoadLogs(group string) ([]RaftLogEntry, error) {
 
 // -------------------- Meta 信息 --------------------
 
-// SaveMeta 持久化元数据（term、votedFor、commitIndex、lastApplied）。
+// SaveMeta 持久化元数据（任期、投票对象、提交索引、最后应用索引）
+// 参数：group - 组ID，term - 任期，votedFor - 投票对象，commitIndex - 提交索引，lastApplied - 最后应用索引
+// 返回：错误信息
 func (s *Storage) SaveMeta(group string, term int64, votedFor string, commitIndex, lastApplied int64) error {
 	if s.db == nil {
 		return nil // 内存模式，不持久化
@@ -143,8 +145,9 @@ func (s *Storage) SaveMeta(group string, term int64, votedFor string, commitInde
 	return s.db.Put(s.makeKey(group, "meta", "info"), data, nil)
 }
 
-// LoadMeta 加载group的元数据。
-// 返回：term, votedFor, commitIndex, lastApplied, error
+// LoadMeta 加载组的元数据
+// 参数：group - 组ID
+// 返回：任期、投票对象、提交索引、最后应用索引和错误信息
 func (s *Storage) LoadMeta(group string) (int64, string, int64, int64, error) {
 	if s.db == nil {
 		return 0, "", 0, 0, nil // 内存模式，返回默认值
@@ -164,7 +167,9 @@ func (s *Storage) LoadMeta(group string) (int64, string, int64, int64, error) {
 
 // -------------------- 状态机 Key-Value --------------------
 
-// PutState 存储状态机KV。
+// PutState 存储状态机键值对
+// 参数：group - 组ID，key - 键名，value - 值
+// 返回：错误信息
 func (s *Storage) PutState(group, key string, value interface{}) error {
 	if s.db == nil {
 		return nil // 内存模式，不持久化
@@ -173,7 +178,9 @@ func (s *Storage) PutState(group, key string, value interface{}) error {
 	return s.db.Put(s.makeKey(group, "state", key), data, nil)
 }
 
-// DeleteState 删除状态机KV。
+// DeleteState 删除状态机键值对
+// 参数：group - 组ID，key - 键名
+// 返回：错误信息
 func (s *Storage) DeleteState(group, key string) error {
 	if s.db == nil {
 		return nil // 内存模式，不持久化
@@ -181,7 +188,9 @@ func (s *Storage) DeleteState(group, key string) error {
 	return s.db.Delete(s.makeKey(group, "state", key), nil)
 }
 
-// GetState 获取状态机KV。
+// GetState 获取状态机键值对
+// 参数：group - 组ID，key - 键名
+// 返回：值和错误信息
 func (s *Storage) GetState(group, key string) (interface{}, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("no storage available")
@@ -195,7 +204,9 @@ func (s *Storage) GetState(group, key string) (interface{}, error) {
 	return value, err
 }
 
-// DeleteLogsFrom 删除指定index及之后的所有日志。
+// DeleteLogsFrom 删除指定索引及之后的所有日志
+// 参数：group - 组ID，startIndex - 起始索引
+// 返回：错误信息
 func (s *Storage) DeleteLogsFrom(group string, startIndex int64) error {
 	if s.db == nil {
 		return nil // 内存模式，不持久化

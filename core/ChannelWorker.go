@@ -1,10 +1,10 @@
 package core
 
 // =====================
-// Channel User & Worker
+// 通道用户和工作者
 // =====================
 
-// The actual worker that deal with the message
+// 实际处理消息的工作者
 
 type ChannelWorker interface {
 	getID() string

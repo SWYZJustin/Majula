@@ -2,7 +2,6 @@ package core
 
 import (
 	"Majula/common"
-	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -14,10 +13,10 @@ func (channel *Channel) DebugPrint(name string, message string) {
 	if !common.DebugPrint {
 		return
 	}
-	fmt.Printf("{%s: %s} %s\n", channel.ID, name, message)
+	Debug("通道调试", "通道ID=", channel.ID, "操作=", name, "消息=", message)
 }
 
-// Connection connection的连接情况
+// Connection 连接情况
 type Connection struct {
 	LastRecvTime time.Time
 	LastSendTime time.Time
@@ -299,10 +298,10 @@ func (channel *Channel) onConnectChanged(worker ChannelWorker, connected bool) {
 }
 
 // =====================
-// Channel User & Worker
+// 通道用户和工作者
 // =====================
 
-// ChannelUser Channel is Channel user
+// ChannelUser 通道用户接口
 type ChannelUser interface {
 	getID() string
 	send(nextHopNodeId string, msg *Message)

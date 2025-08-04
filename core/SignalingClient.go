@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"sync"
@@ -42,7 +41,7 @@ type SignalingClient struct {
 	invokeMutex    sync.RWMutex
 
 	// Node实例引用
-	node *Node // 用于添加Channel
+	node *Node // 用于添加通道
 }
 
 // SignalingClientConfig 信令客户端配置
@@ -135,7 +134,7 @@ func NewSignalingClient(nodeID, nodeName string, localPort int, config *Signalin
 	return client
 }
 
-// SetNode 设置Node实例引用
+// SetNode 设置节点实例引用
 func (c *SignalingClient) SetNode(node *Node) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -160,7 +159,7 @@ func (c *SignalingClient) findAvailablePort() (int, error) {
 func (c *SignalingClient) discoverLocalAddresses() {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		log.Printf("Failed to get network interfaces: %v", err)
+		Error("获取网络接口失败", "错误=", err)
 		return
 	}
 
@@ -190,7 +189,7 @@ func (c *SignalingClient) discoverLocalAddresses() {
 		c.localAddresses = append(c.localAddresses, "127.0.0.1")
 	}
 
-	log.Printf("Discovered local addresses: %v", c.localAddresses)
+	Log("发现本地地址", "地址列表=", c.localAddresses)
 }
 
 // isPrivateIP 判断是否为私有IP地址
@@ -277,7 +276,7 @@ func (c *SignalingClient) handleMessages() {
 			_, message, err := c.conn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Printf("WebSocket read error: %v", err)
+					Error("WebSocket读取错误", "错误=", err)
 				}
 				select {
 				case c.reconnectChan <- true:
@@ -288,12 +287,12 @@ func (c *SignalingClient) handleMessages() {
 
 			var msg SignalingMessage
 			if err := json.Unmarshal(message, &msg); err != nil {
-				log.Printf("Failed to unmarshal message: %v", err)
+				Error("消息反序列化失败", "错误=", err)
 				continue
 			}
 
 			if err := c.processMessage(&msg); err != nil {
-				log.Printf("Failed to process message: %v", err)
+				Error("消息处理失败", "错误=", err)
 			}
 		}
 	}
@@ -349,7 +348,7 @@ func (c *SignalingClient) startHeartbeat() {
 				Timestamp: time.Now(),
 			}
 			if err := c.sendMessage(msg); err != nil {
-				log.Printf("Failed to send heartbeat: %v", err)
+				Error("心跳发送失败", "错误=", err)
 			}
 		case <-c.stopChan:
 			return
@@ -362,7 +361,7 @@ func (c *SignalingClient) monitorConnection() {
 	for {
 		select {
 		case <-c.reconnectChan:
-			log.Printf("Attempting to reconnect to signaling server...")
+			Log("尝试重连信令服务器")
 			c.reconnect()
 		case <-c.stopChan:
 			return
@@ -380,10 +379,10 @@ func (c *SignalingClient) reconnect() {
 			time.Sleep(c.config.ReconnectInterval)
 
 			if err := c.Connect(); err == nil {
-				log.Printf("Successfully reconnected to signaling server")
+				Log("成功重连信令服务器")
 				return
 			} else {
-				log.Printf("Reconnection failed: %v", err)
+				Error("重连失败", "错误=", err)
 			}
 		}
 	}
@@ -417,13 +416,13 @@ func (c *SignalingClient) Disconnect() error {
 
 // RequestKCPConnection 请求与目标节点建立KCP连接
 func (c *SignalingClient) RequestKCPConnection(toNodeID string) (*KCPConnectionResponse, error) {
-	// 生成invokeid
+	// 生成调用ID
 	invokeID := fmt.Sprintf("%s-%s-%d", c.nodeID, toNodeID, time.Now().UnixNano())
 
-	// 创建响应channel
+	// 创建响应通道
 	responseChan := make(chan *KCPConnectionResponse, 1)
 
-	// 注册invokeid
+	// 注册调用ID
 	c.invokeMutex.Lock()
 	c.invokeChannels[invokeID] = responseChan
 	c.invokeMutex.Unlock()
@@ -450,13 +449,13 @@ func (c *SignalingClient) RequestKCPConnection(toNodeID string) (*KCPConnectionR
 		return nil, fmt.Errorf("failed to send KCP connection request: %v", err)
 	}
 
-	log.Printf("Sent KCP connection request to %s (invoke_id: %s)", toNodeID, invokeID)
+	Log("发送KCP连接请求", "目标节点=", toNodeID, "调用ID=", invokeID)
 
 	// 等待响应
 	select {
 	case response := <-responseChan:
 		if response.Success {
-			// 创建KCP Client Channel连接到目标节点
+			// 创建KCP客户端通道连接到目标节点
 			clientWorker := NewKcpConnection(
 				toNodeID,
 				true,                // 是客户端
@@ -471,28 +470,28 @@ func (c *SignalingClient) RequestKCPConnection(toNodeID string) (*KCPConnectionR
 			)
 
 			if clientWorker == nil {
-				log.Printf("Failed to create KCP client worker")
+				Error("创建KCP客户端工作器失败")
 				response.Success = false
 				response.ErrorMsg = "Failed to create KCP client worker"
 			} else {
-				// 创建Channel并添加到Node
+				// 创建通道并添加到节点
 				c.mu.RLock()
 				node := c.node
 				c.mu.RUnlock()
 
 				if node == nil {
-					log.Printf("Node instance not set")
+					Error("节点实例未设置")
 					response.Success = false
 					response.ErrorMsg = "Node instance not set"
 				} else {
-					// 创建Channel
+					// 创建通道
 					channelID := fmt.Sprintf("%s-to-%s", c.nodeID, toNodeID)
 					channel := NewChannelFull(channelID, node, clientWorker)
 					clientWorker.User = channel
 
-					// 添加到Node
+					// 添加到节点
 					node.AddChannel(channel)
-					log.Printf("Successfully created KCP client channel to %s at %s", toNodeID, response.PublicAddr)
+					Log("成功创建KCP客户端通道", "目标节点=", toNodeID, "公网地址=", response.PublicAddr)
 				}
 			}
 		}
@@ -545,7 +544,7 @@ func (c *SignalingClient) DetectPublicAddress(localPort int) (*PublicAddressResp
 		return nil, fmt.Errorf("failed to send UDP request: %v", err)
 	}
 
-	log.Printf("Sent UDP public address detection request from port %d", localPort)
+	Log("发送UDP公网地址检测请求", "本地端口=", localPort)
 
 	// 设置读取超时
 	udpConn.SetReadDeadline(time.Now().Add(10 * time.Second))
@@ -567,7 +566,7 @@ func (c *SignalingClient) DetectPublicAddress(localPort int) (*PublicAddressResp
 		return nil, fmt.Errorf("public address detection failed: %s", response.ErrorMessage)
 	}
 
-	log.Printf("Detected public address: %s (local port: %d)", response.PublicAddr, localPort)
+	Log("检测到公网地址", "公网地址=", response.PublicAddr, "本地端口=", localPort)
 	return &response, nil
 }
 
@@ -575,7 +574,7 @@ func (c *SignalingClient) DetectPublicAddress(localPort int) (*PublicAddressResp
 
 // handleRegisterResponse 处理注册响应
 func (c *SignalingClient) handleRegisterResponse(msg *SignalingMessage) error {
-	log.Printf("Successfully registered with signaling server")
+	Log("成功注册到信令服务器")
 	return nil
 }
 
@@ -592,12 +591,12 @@ func (c *SignalingClient) handleRequestKCPConnection(msg *SignalingMessage) erro
 		return fmt.Errorf("missing invoke_id in request_kcp_connection message")
 	}
 
-	log.Printf("Received KCP connection request from %s (invoke_id: %s)", fromNodeID, invokeID)
+	Log("收到KCP连接请求", "来源节点=", fromNodeID, "调用ID=", invokeID)
 
 	// 1. 选择一个可用的本地端口
 	localPort, err := c.findAvailablePort()
 	if err != nil {
-		log.Printf("Failed to find available port: %v", err)
+		Error("查找可用端口失败", "错误=", err)
 		responseMsg := &SignalingMessage{
 			Type: "kcp_connection_response",
 			From: c.nodeID,
@@ -616,7 +615,7 @@ func (c *SignalingClient) handleRequestKCPConnection(msg *SignalingMessage) erro
 	// 2. 通过UDP检测公网地址
 	publicAddrResponse, err := c.DetectPublicAddress(localPort)
 	if err != nil {
-		log.Printf("Failed to detect public address: %v", err)
+		Error("检测公网地址失败", "错误=", err)
 		// 发送错误响应
 		responseMsg := &SignalingMessage{
 			Type: "kcp_connection_response",
@@ -633,9 +632,9 @@ func (c *SignalingClient) handleRequestKCPConnection(msg *SignalingMessage) erro
 		return c.sendMessage(responseMsg)
 	}
 
-	log.Printf("Detected public address: %s for local port %d", publicAddrResponse.PublicAddr, localPort)
+	Log("检测到公网地址", "公网地址=", publicAddrResponse.PublicAddr, "本地端口=", localPort)
 
-	// 3. 创建KCP Server Channel
+	// 3. 创建KCP服务器通道
 	serverWorker := NewKcpConnection(
 		fromNodeID,
 		false,                         // 不是客户端
@@ -650,7 +649,7 @@ func (c *SignalingClient) handleRequestKCPConnection(msg *SignalingMessage) erro
 	)
 
 	if serverWorker == nil {
-		log.Printf("Failed to create KCP server worker")
+		Error("创建KCP服务器工作器失败")
 		responseMsg := &SignalingMessage{
 			Type: "kcp_connection_response",
 			From: c.nodeID,
@@ -666,13 +665,13 @@ func (c *SignalingClient) handleRequestKCPConnection(msg *SignalingMessage) erro
 		return c.sendMessage(responseMsg)
 	}
 
-	// 4. 创建Channel并添加到Node
+	// 4. 创建通道并添加到节点
 	c.mu.RLock()
 	node := c.node
 	c.mu.RUnlock()
 
 	if node == nil {
-		log.Printf("Node instance not set")
+		Error("节点实例未设置")
 		responseMsg := &SignalingMessage{
 			Type: "kcp_connection_response",
 			From: c.nodeID,
@@ -688,12 +687,12 @@ func (c *SignalingClient) handleRequestKCPConnection(msg *SignalingMessage) erro
 		return c.sendMessage(responseMsg)
 	}
 
-	// 创建Channel
+	// 创建通道
 	channelID := fmt.Sprintf("%s-from-%s", c.nodeID, fromNodeID)
 	channel := NewChannelFull(channelID, node, serverWorker)
 	serverWorker.User = channel
 
-	// 添加到Node
+	// 添加到节点
 	node.AddChannel(channel)
 
 	// 5. 发送成功响应
@@ -711,7 +710,7 @@ func (c *SignalingClient) handleRequestKCPConnection(msg *SignalingMessage) erro
 		Timestamp: time.Now(),
 	}
 
-	log.Printf("Successfully created KCP server channel for %s on port %d", fromNodeID, localPort)
+	Log("成功创建KCP服务器通道", "来源节点=", fromNodeID, "端口=", localPort)
 	return c.sendMessage(responseMsg)
 }
 
@@ -722,7 +721,7 @@ func (c *SignalingClient) handleKCPConnectionResponse(msg *SignalingMessage) err
 		return fmt.Errorf("missing invoke_id in kcp_connection_response message")
 	}
 
-	// 查找对应的channel
+	// 查找对应的通道
 	c.invokeMutex.RLock()
 	responseChan, exists := c.invokeChannels[invokeID]
 	c.invokeMutex.RUnlock()
@@ -744,12 +743,12 @@ func (c *SignalingClient) handleKCPConnectionResponse(msg *SignalingMessage) err
 		response.ErrorMsg = errorMsg
 	}
 
-	// 发送响应到channel
+	// 发送响应到通道
 	select {
 	case responseChan <- response:
-		log.Printf("Sent KCP connection response to channel for invoke_id: %s", invokeID)
+		Log("发送KCP连接响应到通道", "调用ID=", invokeID)
 	default:
-		log.Printf("Channel full for invoke_id: %s", invokeID)
+		Error("通道已满", "调用ID=", invokeID)
 	}
 
 	return nil

@@ -79,7 +79,7 @@ type SubscriptionInfo struct {
 // 添加本地订阅。
 // 参数：pTopic - 主题，pClientName - 客户端名，cb - 回调函数。
 func (node *Node) addLocalSub(pTopic string, pClientName string, cb MESSAGE_CALLBACK) {
-	node.DebugPrint("addLocalSub", fmt.Sprintf("topic=%s client=%s", pTopic, pClientName))
+	Debug("添加本地订阅", "topic=", pTopic, "client=", pClientName)
 	node.MySubsMutex.Lock()
 	defer node.MySubsMutex.Unlock()
 	if node.MySubs == nil {
@@ -116,7 +116,7 @@ func (node *Node) addLocalSub(pTopic string, pClientName string, cb MESSAGE_CALL
 // 移除本地订阅。
 // 参数：pTopic - 主题，pClientName - 客户端名。
 func (node *Node) removeLocalSub(pTopic string, pClientName string) {
-	node.DebugPrint("removeLocalSub", fmt.Sprintf("topic=%s client=%s", pTopic, pClientName))
+	Debug("移除本地订阅", "topic=", pTopic, "client=", pClientName)
 	node.MySubsMutex.Lock()
 	defer node.MySubsMutex.Unlock()
 
@@ -171,7 +171,7 @@ func (node *Node) handleTopicInit(msg *Message) {
 	sender := msg.From
 	node.TotalSubsMutex.Lock()
 	defer node.TotalSubsMutex.Unlock()
-	node.DebugPrint("handleTopicInit", fmt.Sprintf("from=%s topic=%s", sender, topic))
+	Debug("处理主题初始化", "from=", sender, "topic=", topic)
 	if node.TotalSubs == nil {
 		node.TotalSubs = make(map[string][]string)
 	}
@@ -230,7 +230,7 @@ func (node *Node) handleTopicExit(msg *Message) {
 // 在指定主题上发布消息。
 // 参数：pTopic - 主题，pMessage - 消息内容。
 func (node *Node) publishOnTopic(pTopic string, pMessage string) {
-	node.DebugPrint("publishOnTopic", fmt.Sprintf("topic=%s msg=%s", pTopic, pMessage))
+	Debug("发布主题消息", "topic=", pTopic, "msg=", pMessage)
 	node.MySubsMutex.RLock()
 	if subs, ok := node.MySubs[pTopic]; ok {
 		for _, cb := range subs {
@@ -343,21 +343,21 @@ type RouteEntry struct { //路由表的一项
 
 // 打印当前节点的路由表。
 func (node *Node) printRoutingTable() {
-	fmt.Printf("%s的路由表:\n", node.ID)
+	fmt.Printf("\n=== 节点 %s 的路由表 ===\n", node.ID)
+	fmt.Printf("总路由数量: %d\n", len(node.RoutingTable))
+
 	if node.RoutingTable == nil || len(node.RoutingTable) == 0 {
-		fmt.Println("路由表为空")
+		fmt.Printf("路由表为空\n")
 		return
 	}
 
-	fmt.Println("路由表内容:")
 	for destination, routes := range node.RoutingTable {
-		fmt.Printf("目标节点: %s\n", destination)
+		fmt.Printf("\n目标节点: %s (路由数量: %d)\n", destination, len(routes))
 		for i, route := range routes {
-			fmt.Printf("  路由 %d:\n", i+1)
-			fmt.Printf("    本地通道 ID: %s\n", route.LocalChannelID)
-			fmt.Printf("    下一跳节点 ID: %s\n", route.nextHopNodeID)
+			fmt.Printf("  路由 %d: 本地通道=%s, 下一跳=%s\n", i+1, route.LocalChannelID, route.nextHopNodeID)
 		}
 	}
+	fmt.Printf("=== 路由表结束 ===\n\n")
 }
 
 type NodeStatus int // Node的状态标记
@@ -369,10 +369,7 @@ const (
 // DebugPrint Debug调试打印。
 // 参数：name - 调用者名称，message - 信息内容。
 func (n *Node) DebugPrint(name string, message string) {
-	if !common.DebugPrint {
-		return
-	}
-	fmt.Printf("[%s: %s] %s\n", n.ID, name, message)
+	Debug("节点调试", "node=", n.ID, "action=", name, "message=", message)
 }
 
 type NodePeer struct {
@@ -512,9 +509,9 @@ func (node *Node) GetChannel(channelID string) *Channel {
 
 // PrintAllChannels 打印所有Channel信息。
 func (node *Node) PrintAllChannels() {
-	node.DebugPrint("PrintAllChannels", "start")
+	Debug("打印所有通道", "开始")
 	for _, channel := range node.Channels {
-		node.DebugPrint("PrintAllChannels-each", channel.ID)
+		Debug("通道信息", "通道ID=", channel.ID)
 	}
 }
 
@@ -525,7 +522,7 @@ func (node *Node) addMessageCounter() {
 
 // Register 注册并启动Node。
 func (node *Node) Register() {
-	node.DebugPrint("Register", "start")
+	Log("节点注册", "node=", node.ID)
 	node.hello()
 	node.CheckPeersNew()
 	go node.buildUp()
@@ -544,7 +541,7 @@ func (node *Node) Register() {
 
 // Quit 使Node退出，关闭所有服务。
 func (node *Node) Quit() {
-	node.DebugPrint("Quit", "start")
+	Log("节点退出", "node=", node.ID)
 	node.sendQuit()
 	node.HBcancel()
 	node.WsServersMutex.Lock()
@@ -584,9 +581,9 @@ func (node *Node) sendTo(targetId string, msg *Message, channelID ...string) {
 		go node.addToRetryQueue(msg)
 		return
 	}
-	node.DebugPrint("send", msg.Print())
+	Debug("发送消息", "msg=", msg.Print())
 	if msg.Type == Other {
-		fmt.Println("send:", msg.Print())
+		Log("发送消息", "msg=", msg.Print())
 	}
 	go channel.send(nextHopID, msg)
 }
@@ -596,7 +593,7 @@ func (node *Node) sendTo(targetId string, msg *Message, channelID ...string) {
 func (node *Node) addToRetryQueue(msg *Message) {
 	node.RetryMutex.Lock()
 	defer node.RetryMutex.Unlock()
-	node.DebugPrint("addToRetryQueue", msg.Print())
+	Debug("添加消息到重试队列", "msg=", msg.Print())
 	node.RetryQueue = append(node.RetryQueue, msg)
 }
 
@@ -614,7 +611,7 @@ func (node *Node) handleBundle(originalMsg *Message, topic, payload string) {
 	node.MySubsMutex.RLock()
 	for _, realTo := range originalMsg.MessageData.BundleTo {
 		if realTo == node.ID {
-			node.DebugPrint("topic-msg", fmt.Sprintf("[Topic %s] %s", topic, payload))
+			Debug("主题消息", "topic=", topic, "payload=", payload)
 			if subs, ok := node.MySubs[topic]; ok {
 				for _, cb := range subs {
 					go cb(topic, originalMsg.From, node.ID, []byte(payload))
@@ -643,9 +640,9 @@ func (node *Node) handleBundle(originalMsg *Message, topic, payload string) {
 // 处理接收到的消息，包含查重、分发等。
 // 参数：peerId - 发送方ID，msg - 消息。
 func (node *Node) onRecv(peerId string, msg *Message) {
-	node.DebugPrint("onRecv", msg.Print())
+	Debug("接收消息", "msg=", msg.Print())
 	if msg.Type == Other {
-		fmt.Println("onRecv:", msg.Print())
+		Log("接收消息", "msg=", msg.Print())
 	}
 	msgKey := node.generateMsgKey(msg)
 	node.MsgMutex.Lock()
@@ -654,14 +651,14 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 	// 这里是不需要查重的信息的部分 stage1
 	// 接受广播的hello消息
 	if msg.Type == Hello {
-		node.DebugPrint("onRecv-handleHello", "start")
+		Debug("处理Hello消息", "开始")
 		sender := msg.From
 		node.NodePeersMutex.Lock()
 		defer node.NodePeersMutex.Unlock()
 		if _, ok := node.NodePeers[sender]; !ok {
 			//println(Node.ID, "onRecv", msg.Type, sender)
 			//fmt.Println(Node.ID + " add " + sender + " to Node peer")
-			node.DebugPrint("onRecv-hello-addPeer", sender)
+			Debug("添加节点对等", "sender=", sender)
 			node.NodePeers[sender] = &NodePeer{
 				LastActiveTime: time.Now(),
 				Status:         Active,
@@ -671,7 +668,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 	}
 
 	if msg.Type == HeartBeat {
-		node.DebugPrint("onRecv-heartBeat", "start")
+		Debug("处理心跳消息", "开始")
 		go node.handleHeartbeat(msg)
 		return
 	}
@@ -713,7 +710,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 
 		switch msg.MessageData.Type {
 		case Quit:
-			node.DebugPrint("onRecv-Quit", "start")
+			Debug("处理退出消息", "开始")
 			quitId := msg.From
 			go func() {
 				node.NodePeersMutex.Lock()
@@ -724,7 +721,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 		case TopicPublish:
 			topic, payload, ok := parseTopicMessage(msg.MessageData.Data)
 			if !ok {
-				fmt.Println("Invalid topic message:", msg.MessageData.Data)
+				Warning("无效的主题消息", "data=", msg.MessageData.Data)
 				break
 			}
 
@@ -734,7 +731,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 			}
 
 			// 非 bundle 情况
-			node.DebugPrint("topic-msg", fmt.Sprintf("[Topic %s] %s", topic, payload))
+			Debug("主题消息", "topic=", topic, "payload=", payload)
 			node.MySubsMutex.RLock()
 			if subs, ok := node.MySubs[topic]; ok {
 				for _, cb := range subs {
@@ -746,7 +743,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 		case RaftTopicPublish:
 			topic, payload, ok := parseTopicMessage(msg.MessageData.Data)
 			if !ok {
-				fmt.Println("Invalid raft topic message:", msg.MessageData.Data)
+				Warning("无效的Raft主题消息", "data=", msg.MessageData.Data)
 				break
 			}
 
@@ -755,19 +752,19 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 				break
 			}
 
-			node.DebugPrint("raft-topic-msg", fmt.Sprintf("[RaftTopic %s] %s", topic, payload))
+			Debug("Raft主题消息", "topic=", topic, "payload=", payload)
 			stub := node.getRaftStub(topic)
 			if stub != nil {
 				go stub.onRaftMessage(topic, msg.From, node.ID, []byte(payload))
 			}
 
 		case RpcRequest:
-			node.DebugPrint("onRecv-rpcRequest", "start")
+			Debug("处理RPC请求", "开始")
 			go node.handleRpcRequest(msg)
 			return
 
 		case RpcResponse:
-			node.DebugPrint("onRecv-rpcResponse", "start")
+			Debug("处理RPC响应", "开始")
 			go node.handleRpcResponse(msg)
 			return
 
@@ -775,13 +772,13 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 			var payload map[string]interface{}
 			err := common.UnmarshalAny([]byte(msg.Data), &payload)
 			if err != nil {
-				node.DebugPrint("onRecv-p2pMessage", "parseError")
+				Error("P2P消息解析错误")
 				return
 			}
 
 			targetClientID, ok := payload["target_client"].(string)
 			if !ok {
-				node.DebugPrint("onRecv-p2pMessage", "missing target_client")
+				Warning("P2P消息缺少目标客户端")
 				return
 			}
 
@@ -805,7 +802,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 			content := []byte(msg.MessageData.Data)
 			var payload RaftPayload
 			if err := common.UnmarshalAny(content, &payload); err != nil {
-				fmt.Println("[Raft] Failed to unmarshal RaftPayload:", err)
+				Error("Raft载荷反序列化失败", "error=", err)
 				break
 			}
 			group := payload.Group
@@ -823,7 +820,7 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 			break
 		default:
 			//Node.DebugPrint("onRecv-Message", msg.Data)
-			fmt.Println("Receive message: " + msg.Data)
+			Debug("接收消息", "data=", msg.Data)
 		}
 		// 确实是发给我的，但我只是转发用
 	} else if msg.Route == node.ID {
@@ -850,13 +847,13 @@ func (node *Node) onRecv(peerId string, msg *Message) {
 			return
 		}
 		msg.LastSender = node.ID
-		node.DebugPrint("onRecv-transmit", msg.Print())
+		Debug("转发消息", "msg=", msg.Print())
 		//fmt.Println("onRecv-TransFinal", msg.Print())
 		go channel.send(nextHopID, msg)
 
 		// 误发或者广播，但不是发给我，直接丢弃
 	} else {
-		node.DebugPrint("onRecv-dropMessage", msg.Print())
+		Debug("丢弃消息", "msg=", msg.Print())
 		return
 	}
 }
@@ -1237,7 +1234,7 @@ func (node *Node) collectAndCheckPeers() {
 // 从通道更新链路信息。
 // 参数：link - 新链路。
 func (node *Node) linkUpdateFromChannel(link Link) {
-	node.DebugPrint("linkupdate", link.printLinkS())
+	Debug("链路更新", "link=", link.printLinkS())
 	node.LinkSetMutex.Lock()
 	defer node.LinkSetMutex.Unlock()
 	if _, ok := node.LinkSet[link.Source]; !ok {
@@ -1298,7 +1295,7 @@ func (node *Node) handleSubscribeFlood(msg *Message) {
 	var info SubscriptionInfo
 	err := common.UnmarshalAny([]byte(msg.MessageData.Data), &info)
 	if err != nil {
-		node.DebugPrint("handleSubscribeFlood", "invalid payload")
+		Warning("订阅洪泛处理", "无效载荷")
 		return
 	}
 
@@ -1344,14 +1341,14 @@ func (node *Node) PrintTotalSubs() {
 	node.TotalSubsMutex.RLock()
 	defer node.TotalSubsMutex.RUnlock()
 
-	fmt.Printf("%s 的订阅总表（TotalSubs）如下：\n", node.ID)
+	Log("节点订阅总表", "node=", node.ID, "订阅数量=", len(node.TotalSubs))
 	if len(node.TotalSubs) == 0 {
-		fmt.Println("  无订阅记录")
+		Log("无订阅记录")
 		return
 	}
 
 	for topic, subs := range node.TotalSubs {
-		fmt.Printf("  Topic '%s': %v\n", topic, subs)
+		Debug("订阅信息", "topic=", topic, "subscribers=", subs)
 	}
 }
 
@@ -1419,13 +1416,13 @@ func (node *Node) PrintClients() {
 	node.ClientIDsMutex.RLock()
 	defer node.ClientIDsMutex.RUnlock()
 
-	fmt.Printf("Node %s has connected Clients:\n", node.ID)
+	Log("节点客户端列表", "node=", node.ID, "客户端数量=", len(node.ClientIDs))
 	if len(node.ClientIDs) == 0 {
-		fmt.Println("  None")
+		Log("无连接客户端")
 		return
 	}
 	for _, id := range node.ClientIDs {
-		fmt.Printf("  - %s\n", id)
+		Debug("客户端信息", "clientID=", id)
 	}
 }
 
@@ -1444,6 +1441,6 @@ func (n *Node) startHttpServer(wsPort string) {
 	router := SetupRoutes(server)
 	err := router.Run(":" + wsPort)
 	if err != nil {
-		fmt.Printf("Server server failed to start on Port %s: %v\n", wsPort, err)
+		Error("HTTP服务器启动失败", "port=", wsPort, "error=", err)
 	}
 }

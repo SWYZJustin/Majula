@@ -124,8 +124,8 @@ type RaftClient struct {
 func NewRaftClient(group string, node *Node, peers []string, dbPath string) *RaftClient {
 	storage, err := NewStorage(dbPath, node.ID)
 	if err != nil {
-		fmt.Printf("[Raft][%s] Failed to create storage: %v\n", node.ID, err)
-		// 使用内存存储作为fallback
+		Error("Raft存储创建失败", "节点ID=", node.ID, "错误=", err)
+		// 使用内存存储作为备用方案
 		storage = &Storage{
 			db:     nil,
 			NodeId: node.ID,
@@ -202,14 +202,14 @@ func (rc *RaftClient) applyLogToStateMachine() {
 			rc.Learners.Store(cmd.Key, struct{}{})
 			rc.NextIndex[cmd.Key] = rc.CommitIndex + 1
 			rc.MatchIndex[cmd.Key] = 0
-			fmt.Printf("[Raft][%s] Applied AddLearner: %s\n", rc.ID, cmd.Key)
+			Log("Raft应用添加学习者命令", "节点ID=", rc.ID, "学习者ID=", cmd.Key)
 		case removeLearner:
 			rc.Learners.Delete(cmd.Key)
 			delete(rc.NextIndex, cmd.Key)
 			delete(rc.MatchIndex, cmd.Key)
-			fmt.Printf("[Raft][%s] Applied RemoveLearner: %s\n", rc.ID, cmd.Key)
+			Log("Raft应用移除学习者命令", "节点ID=", rc.ID, "学习者ID=", cmd.Key)
 		default:
-			fmt.Printf("[Raft][%s] Unknown command: %+v\n", rc.ID, cmd)
+			Error("Raft未知命令", "节点ID=", rc.ID, "命令=", cmd)
 		}
 
 		if rc.ApplyCallback != nil {
@@ -228,7 +228,7 @@ func (rc *RaftClient) applyLogToStateMachine() {
 func (rc *RaftClient) onRaftMessage(group, from, to string, content []byte) {
 	var payload RaftPayload
 	if err := common.UnmarshalAny(content, &payload); err != nil {
-		fmt.Println("[Raft] Failed to unmarshal RaftPayload:", err)
+		Error("Raft消息反序列化失败", "错误=", err)
 		return
 	}
 	switch payload.Type {
@@ -254,20 +254,20 @@ func (rc *RaftClient) onRaftMessage(group, from, to string, content []byte) {
 			}
 
 			if cmdPayload.Forwarded {
-				fmt.Printf("[Raft][%s] Already forwarded once, reject\n", rc.ID)
+				Error("Raft请求已转发过一次，拒绝", "节点ID=", rc.ID)
 				return
 			}
 
 			if rc.LeaderHint != "" {
-				fmt.Printf("[Raft][%s] Forwarding request to leader %s\n", rc.ID, rc.LeaderHint)
+				Log("Raft转发请求到领导者", "节点ID=", rc.ID, "领导者ID=", rc.LeaderHint)
 				rc.forwardToLeader(rc.LeaderHint, cmdPayload.Cmd, true, cmdPayload.OriginId)
 			} else {
-				fmt.Printf("[Raft][%s] No leader known, cannot forward\n", rc.ID)
+				Error("Raft未知领导者，无法转发", "节点ID=", rc.ID)
 			}
 		}
 
 	default:
-		fmt.Println("[Raft] Unknown RaftPayload type:", payload.Type)
+		Error("Raft未知消息类型", "类型=", payload.Type)
 	}
 }
 
@@ -279,21 +279,21 @@ func (rc *RaftClient) onRaftMessage(group, from, to string, content []byte) {
 func (rc *RaftClient) handleRequestVote(group, from, to string, payload *RaftPayload) {
 	rc.Mutex.Lock()
 	defer rc.Mutex.Unlock()
-	fmt.Printf("[Raft][%s] handleRequestVote from=%s term=%d myTerm=%d\n", rc.ID, from, payload.Term, rc.CurrentTerm)
+	Debug("Raft处理投票请求", "节点ID=", rc.ID, "来源=", from, "请求任期=", payload.Term, "当前任期=", rc.CurrentTerm)
 
 	voteGranted := false
 	if payload.Term < rc.CurrentTerm {
 		voteGranted = false
 	} else {
 		if payload.Term > rc.CurrentTerm {
-			fmt.Printf("[Raft][%s] handleRequestVote: term变更 %d -> %d\n", rc.ID, rc.CurrentTerm, payload.Term)
+			Log("Raft任期变更", "节点ID=", rc.ID, "原任期=", rc.CurrentTerm, "新任期=", payload.Term)
 			rc.CurrentTerm = payload.Term
 			rc.VotedFor = ""
 			rc.Role = Follower
 			rc.persistTermAndVote()
 		}
 		if (rc.VotedFor == "" || rc.VotedFor == payload.CandidateId) && rc.isUpToDate(payload.PrevLogIndex, payload.PrevLogTerm) {
-			fmt.Printf("[Raft][%s] 投票给 %s, term=%d\n", rc.ID, payload.CandidateId, rc.CurrentTerm)
+			Log("Raft投票给候选人", "节点ID=", rc.ID, "候选人ID=", payload.CandidateId, "任期=", rc.CurrentTerm)
 			rc.VotedFor = payload.CandidateId
 			voteGranted = true
 			rc.persistTermAndVote()
@@ -327,13 +327,13 @@ func (rc *RaftClient) handleRequestVoteResponse(group, from, to string, payload 
 
 	rc.Mutex.Lock()
 	defer rc.Mutex.Unlock()
-	fmt.Printf("[Raft][%s] handleRequestVoteResponse from=%s term=%d myTerm=%d vote=%v\n", rc.ID, from, payload.Term, rc.CurrentTerm, payload.VoteGranted)
+	Debug("Raft处理投票响应", "节点ID=", rc.ID, "来源=", from, "响应任期=", payload.Term, "当前任期=", rc.CurrentTerm, "投票结果=", payload.VoteGranted)
 
 	if payload.Term < rc.CurrentTerm {
 		return
 	}
 	if payload.Term > rc.CurrentTerm {
-		fmt.Printf("[Raft][%s] handleRequestVoteResponse: term变更 %d -> %d\n", rc.ID, rc.CurrentTerm, payload.Term)
+		Log("Raft任期变更", "节点ID=", rc.ID, "原任期=", rc.CurrentTerm, "新任期=", payload.Term)
 		rc.CurrentTerm = payload.Term
 		rc.VotedFor = ""
 		rc.Role = Follower
@@ -348,7 +348,7 @@ func (rc *RaftClient) handleRequestVoteResponse(group, from, to string, payload 
 
 	if rc.Role == Candidate && rc.hasMajorityVotes() {
 		rc.switchToLeader()
-		fmt.Printf("[Raft][%s] Becomes Leader for term %d\n", rc.ID, rc.CurrentTerm)
+		Log("Raft成为领导者", "节点ID=", rc.ID, "任期=", rc.CurrentTerm)
 		lastIndex, _ := rc.getLastLogIndex()
 		for _, peer := range rc.getAllPeers() {
 			if peer == rc.ID {
@@ -395,7 +395,7 @@ func (rc *RaftClient) startElection() {
 	lastLogIndex, lastLogTerm := rc.getLastLogIndex()
 	rc.Mutex.Unlock()
 
-	fmt.Printf("[Raft][%s] 开始选举，term=%d\n", rc.ID, term)
+	Log("Raft开始选举", "节点ID=", rc.ID, "任期=", term)
 
 	payload := RaftPayload{
 		Type:         RequestVote,
@@ -412,7 +412,7 @@ func (rc *RaftClient) startElection() {
 		go func(peer string) {
 			_, err := rc.sendWithInvokeId(peer, &payload, time.Duration(REQUEST_VOTE_TIMEOUT)*time.Millisecond)
 			if err != nil {
-				fmt.Printf("[Raft][%s] RequestVote to %s failed after retries: %v\n", rc.ID, peer, err)
+				Error("Raft投票请求失败", "节点ID=", rc.ID, "目标节点=", peer, "错误=", err)
 			}
 		}(peer)
 	}
@@ -487,18 +487,12 @@ func (rc *RaftClient) sendHeartbeat(nodeID string, term, commitIdx int64) {
 // to: 本节点ID
 // payload: 日志复制内容
 func (rc *RaftClient) handleAppendEntries(group, from, to string, payload *RaftPayload) {
-	fmt.Printf("[Raft][%s] 进入了handleAppendEntries\n",
-		rc.ID)
 	rc.Mutex.Lock()
 	defer func() {
 		rc.Mutex.Unlock()
-		fmt.Printf("[Raft][%s] 离开了了handleAppendEntries，不是这个问题\n",
-			rc.ID)
 	}()
 
-	isHeartbeat := len(payload.Entries) == 0
-	fmt.Printf("[Raft][%s] handleAppendEntries from=%s term=%d myTerm=%d entries=%d (heartbeat=%v)\n",
-		rc.ID, from, payload.Term, rc.CurrentTerm, len(payload.Entries), isHeartbeat)
+	Debug("Raft处理追加条目", "节点ID=", rc.ID, "来源=", from, "请求任期=", payload.Term, "当前任期=", rc.CurrentTerm, "条目数=", len(payload.Entries), "心跳=", len(payload.Entries) == 0)
 
 	if payload.Term < rc.CurrentTerm {
 		rc.replyAppendEntries(payload.LeaderId, false, 0, 0, payload.InvokeId)
@@ -534,8 +528,7 @@ func (rc *RaftClient) handleAppendEntries(group, from, to string, payload *RaftP
 	}
 
 	if len(payload.Entries) > 0 {
-		fmt.Printf("[Raft][%s] 追加日志 %d 条 (PrevLogIndex=%d)\n",
-			rc.ID, len(payload.Entries), payload.PrevLogIndex)
+		Log("Raft追加日志", "节点ID=", rc.ID, "条目数=", len(payload.Entries), "前置日志索引=", payload.PrevLogIndex)
 
 		for _, entry := range payload.Entries {
 			logIdx := int(entry.Index) - 1
@@ -614,8 +607,7 @@ func (rc *RaftClient) handleAppendEntriesResponse(group, from, to string, payloa
 	rc.Mutex.Lock()
 	defer rc.Mutex.Unlock()
 
-	fmt.Printf("[Raft][%s] handleAppendEntriesResponse from=%s term=%d myTerm=%d success=%v\n",
-		rc.ID, from, payload.Term, rc.CurrentTerm, payload.Success)
+	Debug("Raft处理追加条目响应", "节点ID=", rc.ID, "来源=", from, "响应任期=", payload.Term, "当前任期=", rc.CurrentTerm, "成功=", payload.Success)
 
 	if payload.Term > rc.CurrentTerm {
 		rc.switchToFollower(payload.Term)
@@ -634,9 +626,7 @@ func (rc *RaftClient) handleAppendEntriesResponse(group, from, to string, payloa
 			rc.MatchIndex[from] = rc.NextIndex[from] - 1
 			rc.NextIndex[from] = rc.MatchIndex[from] + 1
 		}
-		//fmt.Printf("[Raft][%s] I reached to this step 1\n", rc.ID)
 		rc.advanceCommitIndex()
-		//fmt.Printf("[Raft][%s] I reached to this step 2\n", rc.ID)
 	} else {
 		if payload.ConflictTerm != 0 {
 			lastIndexOfTerm := rc.findLastIndexOfTerm(payload.ConflictTerm)
@@ -700,7 +690,7 @@ func (rc *RaftClient) sendAppendEntriesTo(peer string) {
 	go func(peer string, payload RaftPayload) {
 		_, err := rc.sendWithInvokeId(peer, &payload, 200*time.Millisecond)
 		if err != nil {
-			fmt.Printf("[Raft][%s] AppendEntries to %s failed: %v\n", rc.ID, peer, err)
+			Error("Raft追加条目发送失败", "节点ID=", rc.ID, "目标节点=", peer, "错误=", err)
 		}
 	}(peer, payload)
 }
@@ -725,7 +715,7 @@ func (rc *RaftClient) advanceCommitIndex() {
 	N := quickSelect(matchIndexes, mid)
 
 	if N > rc.CommitIndex && N > 0 && rc.Log[N-1].Term == rc.CurrentTerm {
-		fmt.Printf("[Raft][%s] advanceCommitIndex: commitIndex %d -> %d\n", rc.ID, rc.CommitIndex, N)
+		Log("Raft推进提交索引", "节点ID=", rc.ID, "原提交索引=", rc.CommitIndex, "新提交索引=", N)
 		rc.CommitIndex = N
 		rc.applyLogToStateMachine()
 	}
@@ -783,10 +773,10 @@ func (rc *RaftClient) HandleClientRequest(cmd RaftCommand) {
 		rc.ProposeCommand(cmd)
 	} else {
 		if leaderHint != "" {
-			fmt.Printf("[Raft][%s] Redirect client to leader %s\n", rc.ID, leaderHint)
+			Log("Raft重定向客户端到领导者", "节点ID=", rc.ID, "领导者ID=", leaderHint)
 			rc.forwardToLeader(leaderHint, cmd, false, rc.ID)
 		} else {
-			fmt.Printf("[Raft][%s] No leader info, reject request\n", rc.ID)
+			Error("Raft无领导者信息，拒绝请求", "节点ID=", rc.ID)
 		}
 	}
 }
@@ -821,7 +811,7 @@ func (rc *RaftClient) ProposeCommand(cmd RaftCommand) {
 	rc.Mutex.Lock()
 
 	if rc.Role != Leader {
-		fmt.Printf("[Raft][%s] Reject command, not leader\n", rc.ID)
+		Error("Raft拒绝命令，不是领导者", "节点ID=", rc.ID)
 		rc.Mutex.Unlock()
 		return
 	}
@@ -836,7 +826,7 @@ func (rc *RaftClient) ProposeCommand(cmd RaftCommand) {
 	rc.Log = append(rc.Log, entry)
 	rc.persistLog()
 
-	// 准备好 peers 和 learners 的快照
+	// 准备好对等节点和学习者节点的快照
 	peers := make([]string, 0, len(rc.Peers))
 	for _, peer := range rc.Peers {
 		if peer != rc.ID {
@@ -854,7 +844,7 @@ func (rc *RaftClient) ProposeCommand(cmd RaftCommand) {
 	// 状态修改完成，释放锁
 	rc.Mutex.Unlock()
 
-	// 异步发送 AppendEntries
+	// 异步发送追加条目
 	for _, peer := range peers {
 		go rc.sendAppendEntriesTo(peer)
 	}
@@ -864,7 +854,7 @@ func (rc *RaftClient) ProposeCommand(cmd RaftCommand) {
 	}
 }
 
-// startMainLoop 启动主循环（模仿Elect.go的设计）
+// startMainLoop 启动主循环
 func (rc *RaftClient) startMainLoop() {
 	if !atomic.CompareAndSwapInt32(&rc.running, 0, 1) {
 		return // 已经在运行
@@ -876,7 +866,7 @@ func (rc *RaftClient) startMainLoop() {
 		for {
 			select {
 			case <-rc.ctx.Done():
-				print("---------asaassds", rc.ID)
+				Debug("调试信息", "节点ID=", rc.ID)
 				return
 			default:
 				rc.processTimers()
@@ -900,7 +890,7 @@ func (rc *RaftClient) processTimers() {
 	var now, heartbeatTimeout, electionTimeout int64
 
 	// 仅用于读取共享状态
-	fmt.Printf("555555[Raft][%s] ddd\n", rc.ID)
+	Debug("调试信息", "节点ID=", rc.ID)
 
 	rc.Mutex.Lock()
 	role = rc.Role
@@ -909,25 +899,21 @@ func (rc *RaftClient) processTimers() {
 	electionTimeout = rc.electionTimeout
 	rc.Mutex.Unlock()
 
-	fmt.Printf("[Raft][%s] processTimers: Role=%v, now=%d, heartbeatTimeout=%d, electionTimeout=%d\n",
-		rc.ID, role, now, heartbeatTimeout, electionTimeout)
+	Debug("Raft处理定时器", "节点ID=", rc.ID, "角色=", rc.Role, "当前时间=", now, "心跳超时=", rc.heartbeatTimeout, "选举超时=", rc.electionTimeout)
 
 	if role != Leader && now+60000 < electionTimeout {
-		fmt.Printf("++++++[Raft][%s] lkjhflkjsdfklaflkaflkasdlkjas (now=%d, timeout=%d)\n",
-			rc.ID, now, electionTimeout)
+		Debug("Raft调试信息", "节点ID=", rc.ID, "当前时间=", now, "超时时间=", electionTimeout)
 	}
 	if role != Leader && now >= electionTimeout {
-		fmt.Printf("[Raft][%s] >>> Election timeout! starting election (now=%d, timeout=%d)\n",
-			rc.ID, now, electionTimeout)
+		Log("Raft选举超时，开始选举", "节点ID=", rc.ID, "当前时间=", now, "超时时间=", electionTimeout)
 		go rc.startElection()
 	}
 
 	if role == Leader && now >= heartbeatTimeout {
-		fmt.Printf("[Raft][%s] >>> Heartbeat timeout! broadcasting heartbeat (now=%d, next=%d)\n",
-			rc.ID, now, heartbeatTimeout)
+		Log("Raft心跳超时，广播心跳", "节点ID=", rc.ID, "当前时间=", now, "下次心跳=", heartbeatTimeout)
 		go rc.broadcastHeartbeat()
 		rc.resetHeartbeatTimer()
-		fmt.Printf("[Raft][%s] <<< Heartbeat timer reset, next=%d\n", rc.ID, rc.heartbeatTimeout)
+		Debug("Raft心跳定时器重置", "节点ID=", rc.ID, "下次心跳=", rc.heartbeatTimeout)
 	}
 }
 
@@ -935,14 +921,14 @@ func (rc *RaftClient) processTimers() {
 func (rc *RaftClient) resetElectionTimer() {
 	timeout := ELECTION_TIMEOUT_MIN + randInt(0, ELECTION_TIMEOUT_MAX-ELECTION_TIMEOUT_MIN)
 	rc.electionTimeout = time.Now().UnixMilli() + int64(timeout)
-	fmt.Printf("[Raft][%s] resetElectionTimer, timeout=%dms\n", rc.ID, timeout)
+	Debug("Raft重置选举定时器", "节点ID=", rc.ID, "超时时间=", timeout, "毫秒")
 }
 
 // resetHeartbeatTimer 重置心跳定时器
 func (rc *RaftClient) resetHeartbeatTimer() {
 	interval := HEARTBEAT_INTERVAL
 	rc.heartbeatTimeout = time.Now().UnixMilli() + int64(interval)
-	fmt.Printf("[Raft][%s] resetHeartbeatTimer, interval=%dms\n", rc.ID, interval)
+	Debug("Raft重置心跳定时器", "节点ID=", rc.ID, "间隔时间=", interval, "毫秒")
 }
 
 func randInt(min, max int) int {
@@ -1004,7 +990,7 @@ type RaftPayload struct {
 // targetNode: 目标节点ID
 // content: 消息内容
 func (rc *RaftClient) sendToTarget(targetNode string, content string) {
-	fmt.Printf("[Send] from=%s to=%s content=%s\n", rc.ID, targetNode, content)
+	Debug("Raft发送消息", "来源=", rc.ID, "目标=", targetNode, "内容=", content)
 	msg := &Message{
 		MessageData: MessageData{
 			Type: RaftMessage,
@@ -1021,14 +1007,14 @@ func (rc *RaftClient) sendToTarget(targetNode string, content string) {
 // peer: 目标节点ID
 // payload: RaftPayload
 // timeout: 超时时间
-// 返回：响应RaftPayload, error
+// 返回：响应RaftPayload和错误信息
 func (rc *RaftClient) sendWithInvokeId(peer string, payload *RaftPayload, timeout time.Duration) (*RaftPayload, error) {
-	// 生成 invokeId
+	// 生成调用ID
 	currentRole := rc.Role
 	invokeId := rc.invokeCounter.Add(1)
 	payload.InvokeId = invokeId
 
-	// 注册等待 channel
+	// 注册等待通道
 	ch := make(chan *RaftPayload, 1)
 	rc.pending.Store(invokeId, ch)
 	defer rc.pending.Delete(invokeId)
@@ -1043,13 +1029,12 @@ func (rc *RaftClient) sendWithInvokeId(peer string, payload *RaftPayload, timeou
 
 		select {
 		case resp := <-ch:
-			fmt.Println("---------------------This works!!! --------------------------------")
 			return resp, nil
 		case <-time.After(timeout):
 			if rc.Role != currentRole {
 				break
 			}
-			fmt.Printf("[Raft][%s] Timeout waiting for %s response, retry %d\n", rc.ID, peer, retries+1)
+			Error("Raft等待响应超时", "节点ID=", rc.ID, "目标节点=", peer, "重试次数=", retries+1)
 		}
 	}
 	return nil, fmt.Errorf("[Raft][%s] No response from %s after retries or role change", rc.ID, peer)
@@ -1067,7 +1052,7 @@ func (rc *RaftClient) sendToAll(content string) {
 // switchToFollower 切换为Follower角色。
 // term: 新的term
 func (rc *RaftClient) switchToFollower(term int64) {
-	fmt.Printf("[Raft][%s] 切换到 Follower, term=%d\n", rc.ID, term)
+	Log("Raft切换到跟随者", "节点ID=", rc.ID, "任期=", term)
 	rc.CurrentTerm = term
 	rc.Role = Follower
 	rc.VotedFor = ""
@@ -1078,7 +1063,7 @@ func (rc *RaftClient) switchToFollower(term int64) {
 
 // switchToCandidate 切换为Candidate角色并自增term。
 func (rc *RaftClient) switchToCandidate() {
-	fmt.Printf("[Raft][%s] 切换到 Candidate, term=%d\n", rc.ID, rc.CurrentTerm+1)
+	Log("Raft切换到候选人", "节点ID=", rc.ID, "任期=", rc.CurrentTerm+1)
 	rc.Role = Candidate
 	rc.CurrentTerm++
 	rc.VotedFor = rc.ID
@@ -1090,24 +1075,14 @@ func (rc *RaftClient) switchToCandidate() {
 
 // switchToLeader 切换为Leader角色，初始化相关状态。
 func (rc *RaftClient) switchToLeader() {
-	fmt.Printf("[Raft][%s] 切换到 Leader, term=%d\n", rc.ID, rc.CurrentTerm)
+	Log("Raft切换到领导者", "节点ID=", rc.ID, "任期=", rc.CurrentTerm)
 	rc.Role = Leader
 	rc.disableElectionTimer()
 	rc.resetHeartbeatTimer()
 
-	/*
-		rc.pending.Range(func(key, value interface{}) bool {
-			ch := value.(chan *RaftPayload)
-			close(ch)
-			rc.pending.Delete(key)
-			return true
-		})
-
-	*/
-
 	lastIndex, _ := rc.getLastLogIndex()
 
-	// 初始化 Peers 的 NextIndex 和 MatchIndex
+	// 初始化对等节点的NextIndex和MatchIndex
 	for _, peer := range rc.Peers {
 		if peer == rc.ID {
 			continue
@@ -1131,7 +1106,7 @@ func (rc *RaftClient) switchToLeader() {
 func (rc *RaftClient) LoadLogs() {
 	logs, err := rc.Storage.LoadLogs(rc.Group)
 	if err != nil {
-		fmt.Printf("[Raft][%s] Failed to load logs for group %s: %v\n", rc.ID, rc.Group, err)
+		Error("Raft加载日志失败", "节点ID=", rc.ID, "组=", rc.Group, "错误=", err)
 		return
 	}
 	rc.Log = logs
@@ -1165,5 +1140,5 @@ func (rc *RaftClient) Close() {
 // disableElectionTimer 禁用选举定时器（用于成为Leader后）
 func (rc *RaftClient) disableElectionTimer() {
 	rc.electionTimeout = math.MaxInt64
-	fmt.Printf("[Raft][%s] election timer disabled\n", rc.ID)
+	Debug("Raft选举定时器已禁用", "节点ID=", rc.ID)
 }

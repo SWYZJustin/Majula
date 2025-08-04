@@ -4,7 +4,6 @@ import (
 	"Majula/common"
 	"context"
 	"fmt"
-	"log"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -83,7 +82,7 @@ func (ec *ElectCandidate) Start() error {
 		return fmt.Errorf("candidate already running")
 	}
 
-	log.Printf("[Elect][%s] Starting election candidate", ec.ID)
+	Log("选举候选人启动", "候选人ID=", ec.ID)
 
 	// 订阅心跳和放弃消息
 	ec.subscribeToElectionTopics()
@@ -97,7 +96,7 @@ func (ec *ElectCandidate) Start() error {
 // Stop 停止选举候选人
 func (ec *ElectCandidate) Stop() {
 	if atomic.CompareAndSwapInt32(&ec.running, 1, 0) {
-		log.Printf("[Elect][%s] Stopping election candidate", ec.ID)
+		Log("选举候选人停止", "候选人ID=", ec.ID)
 		ec.cancel()
 	}
 }
@@ -170,7 +169,7 @@ func (ec *ElectCandidate) processState() {
 // processBusyState 处理忙碌状态
 func (ec *ElectCandidate) processBusyState(now int64) {
 	if now >= ec.waitStandbyTime {
-		log.Printf("[Elect][%s] Busy -> Standby", ec.ID)
+		Log("选举状态变更", "候选人ID=", ec.ID, "状态=忙碌->待命")
 		ec.State = ElectStandby
 		ec.stateChangeCount++
 
@@ -185,7 +184,7 @@ func (ec *ElectCandidate) processBusyState(now int64) {
 // processStandbyState 处理待命状态
 func (ec *ElectCandidate) processStandbyState(now int64) {
 	if now >= ec.waitDutyTime {
-		log.Printf("[Elect][%s] Standby -> Duty", ec.ID)
+		Log("选举状态变更", "候选人ID=", ec.ID, "状态=待命->值班")
 		ec.State = ElectDuty
 		ec.stateChangeCount++
 
@@ -225,7 +224,7 @@ func (ec *ElectCandidate) sendHeartbeat() {
 	ec.node.publishOnTopic(ec.getHeartbeatTopic(), string(data))
 
 	ec.heartbeatCount++
-	log.Printf("[Elect][%s] Sent heartbeat", ec.ID)
+	Debug("发送心跳", "候选人ID=", ec.ID)
 }
 
 // onHeartbeat 处理收到的心跳
@@ -236,7 +235,7 @@ func (ec *ElectCandidate) onHeartbeat(from string, content []byte) {
 
 	var heartbeat map[string]interface{}
 	if err := common.UnmarshalAny(content, &heartbeat); err != nil {
-		log.Printf("[Elect][%s] Failed to unmarshal heartbeat: %v", ec.ID, err)
+		Error("心跳消息反序列化失败", "候选人ID=", ec.ID, "错误=", err)
 		return
 	}
 
@@ -250,7 +249,7 @@ func (ec *ElectCandidate) onHeartbeat(from string, content []byte) {
 
 	// 如果当前是值班者，收到其他心跳说明有冲突
 	if ec.State == ElectDuty {
-		log.Printf("[Elect][%s] Conflict detected with %s, giving up duty", ec.ID, from)
+		Log("检测到冲突，放弃值班", "候选人ID=", ec.ID, "冲突方=", from)
 		ec.State = ElectStandby
 		ec.stateChangeCount++
 
@@ -263,7 +262,7 @@ func (ec *ElectCandidate) onHeartbeat(from string, content []byte) {
 		now := time.Now().UnixMilli()
 		randomOffset := rand.Int63n(ec.BaseOvertimeT)
 		ec.waitDutyTime = now + ec.BaseOvertimeT + randomOffset
-		log.Printf("[Elect][%s] Extended wait time due to heartbeat from %s", ec.ID, from)
+		Debug("因心跳延长等待时间", "候选人ID=", ec.ID, "来源=", from)
 	}
 }
 
@@ -275,7 +274,7 @@ func (ec *ElectCandidate) onGiveUp(from string, content []byte) {
 
 	var giveUp map[string]interface{}
 	if err := common.UnmarshalAny(content, &giveUp); err != nil {
-		log.Printf("[Elect][%s] Failed to unmarshal giveup: %v", ec.ID, err)
+		Error("放弃消息反序列化失败", "候选人ID=", ec.ID, "错误=", err)
 		return
 	}
 
@@ -292,13 +291,13 @@ func (ec *ElectCandidate) onGiveUp(from string, content []byte) {
 		now := time.Now().UnixMilli()
 		// 减少等待时间
 		ec.waitDutyTime = now + ec.BaseOvertimeT/2
-		log.Printf("[Elect][%s] Reduced wait time due to giveup from %s", ec.ID, from)
+		Debug("因放弃消息减少等待时间", "候选人ID=", ec.ID, "来源=", from)
 	}
 }
 
 // checkHealth 健康检查
 func (ec *ElectCandidate) checkHealth() {
-	log.Printf("[Elect][%s] Health check passed", ec.ID)
+	Debug("健康检查通过", "候选人ID=", ec.ID)
 }
 
 // GiveUp 主动放弃值班
@@ -307,7 +306,7 @@ func (ec *ElectCandidate) GiveUp() {
 	defer ec.mu.Unlock()
 
 	if ec.State == ElectDuty {
-		log.Printf("[Elect][%s] Giving up duty", ec.ID)
+		Log("主动放弃值班", "候选人ID=", ec.ID)
 		ec.State = ElectStandby
 		ec.stateChangeCount++
 
