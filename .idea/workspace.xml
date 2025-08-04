@@ -7,27 +7,14 @@
     <list default="true" id="d7c00d39-9a81-4963-bcdc-f48a1acdd41d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Channel.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Channel.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/ChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/ChannelWorker.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Elect.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Elect.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/FRPStreamStub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStreamStub.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/FRPStubManager.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/FRPStubManager.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/KCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/KCPChannelWorker.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/MajulaClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/MajulaClient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/apis.go" beforeDir="false" afterPath="$PROJECT_DIR$/api/apis.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Learner.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Learner.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Link.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Link.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/MajulaServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/MajulaServer.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Message.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Message.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Nginx.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Nginx.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Node.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Node.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/RPC.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RPC.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/Raft.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Raft.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/RaftManager.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftManager.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/RaftStorage.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftStorage.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/RaftSub.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/RaftSub.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/SignalingClient.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/SignalingClient.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/TCPChannelWorker.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/TCPChannelWorker.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/Tools.go" beforeDir="false" afterPath="$PROJECT_DIR$/core/Tools.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/SignalingServer.go" beforeDir="false" afterPath="$PROJECT_DIR$/server/SignalingServer.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -225,4 +226,121 @@ func (s *Storage) DeleteLogsFrom(group string, startIndex int64) error {
 		}
 	}
 	return nil
+}
+
+// -------------------- 状态机状态传输 --------------------
+
+// GetFullState 获取状态机的完整状态，用于Learner快速同步
+// 参数：group - 组ID
+// 返回：完整状态机状态和错误信息
+func (s *Storage) GetFullState(group string) (map[string]interface{}, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("no storage available")
+	}
+
+	state := make(map[string]interface{})
+	prefix := fmt.Sprintf("node:%s:group:%s:state:", s.NodeId, group)
+	iter := s.db.NewIterator(nil, nil)
+	defer iter.Release()
+
+	for iter.Next() {
+		key := string(iter.Key())
+		if strings.HasPrefix(key, prefix) {
+			// 提取键名（去掉前缀）
+			stateKey := strings.TrimPrefix(key, prefix)
+			// 解析值
+			var value interface{}
+			if err := json.Unmarshal(iter.Value(), &value); err != nil {
+				continue // 跳过无法解析的值
+			}
+			state[stateKey] = value
+		}
+	}
+
+	return state, nil
+}
+
+// SetFullState 设置状态机的完整状态，用于Learner快速同步
+// 参数：group - 组ID，state - 完整状态机状态
+// 返回：错误信息
+func (s *Storage) SetFullState(group string, state map[string]interface{}) error {
+	if s.db == nil {
+		return nil // 内存模式，不持久化
+	}
+
+	// 先清除现有状态
+	s.clearState(group)
+
+	// 设置新状态
+	for key, value := range state {
+		if err := s.PutState(group, key, value); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// clearState 清除指定组的所有状态机数据
+// 参数：group - 组ID
+// 返回：错误信息
+func (s *Storage) clearState(group string) error {
+	if s.db == nil {
+		return nil // 内存模式，不持久化
+	}
+
+	prefix := fmt.Sprintf("node:%s:group:%s:state:", s.NodeId, group)
+	iter := s.db.NewIterator(nil, nil)
+	defer iter.Release()
+
+	for iter.Next() {
+		key := string(iter.Key())
+		if strings.HasPrefix(key, prefix) {
+			_ = s.db.Delete(iter.Key(), nil)
+		}
+	}
+
+	return nil
+}
+
+// GetStateSnapshot 获取状态机快照，包含元数据
+// 参数：group - 组ID
+// 返回：状态机快照和错误信息
+func (s *Storage) GetStateSnapshot(group string) (*StateSnapshot, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("no storage available")
+	}
+
+	// 获取当前元数据
+	term, _, commitIndex, lastApplied, err := s.LoadMeta(group)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取完整状态
+	state, err := s.GetFullState(group)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshot := &StateSnapshot{
+		Group:       group,
+		Term:        term,
+		CommitIndex: commitIndex,
+		LastApplied: lastApplied,
+		State:       state,
+		Timestamp:   time.Now(),
+	}
+
+	return snapshot, nil
+}
+
+// StateSnapshot 状态机快照结构体
+type StateSnapshot struct {
+	Group       string                 `json:"group"`        // 组名
+	Term        int64                  `json:"term"`         // 当前任期
+	CommitIndex int64                  `json:"commit_index"` // 提交索引
+	LastApplied int64                  `json:"last_applied"` // 最后应用索引
+	State       map[string]interface{} `json:"state"`        // 状态机状态
+	Timestamp   time.Time              `json:"timestamp"`    // 快照时间戳
 }

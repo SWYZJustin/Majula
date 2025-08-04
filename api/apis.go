@@ -192,6 +192,11 @@ func (c *Client) JoinRaftGroupAsLearner(group, dbPath string) {
 	c.inner.JoinRaftGroupAsLearner(group, dbPath)
 }
 
+// JoinRaftGroupAsLearnerWithFastSync 以学习者身份加入Raft组，使用状态机状态传输快速同步
+func (c *Client) JoinRaftGroupAsLearnerWithFastSync(group, dbPath string) {
+	c.inner.JoinRaftGroupAsLearnerWithFastSync(group, dbPath)
+}
+
 // 退出本地 learner
 // 参数：group - raft group 名称
 func (c *Client) LeaveRaftGroupAsLearner(group string) {
@@ -246,7 +251,15 @@ func (c *Client) DeleteFromRaftGroupWithDefaultTimeout(group, key string) (inter
 	return c.inner.DeleteFromGroup(group, key, 10*time.Second)
 }
 
-// GetFromRaftGroupWithDefaultTimeout 从Raft组中读取值（使用默认超时时间）
+// GetFromRaftGroupWithDefaultTimeout 从Raft组获取值（使用默认超时）
 func (c *Client) GetFromRaftGroupWithDefaultTimeout(group, key string) (interface{}, bool) {
-	return c.inner.GetFromGroup(group, key, 10*time.Second)
+	return c.inner.GetFromGroup(group, key, 5*time.Second)
+}
+
+// ConnectToNode 连接到指定节点（通过信令服务器）
+// targetNodeID: 目标节点ID
+// timeout: 超时时间
+// 返回：连接结果和是否成功
+func (c *Client) ConnectToNode(targetNodeID string, timeout time.Duration) (interface{}, bool) {
+	return c.inner.ConnectToNode(targetNodeID, timeout)
 }

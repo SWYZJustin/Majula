@@ -247,6 +247,20 @@ func (c *MajulaClient) handleMessage(msg MajulaPackage) {
 			c.Wrapper.Lock.Unlock()
 		}
 
+	case msg.Method == "CONNECT_TO_NODE_RESPONSE" && msg.InvokeId != 0:
+		c.Wrapper.Lock.RLock()
+		ch, ok := c.Wrapper.RpcResult[msg.InvokeId]
+		c.Wrapper.Lock.RUnlock()
+		if ok {
+			select {
+			case ch <- msg.Result:
+			default:
+			}
+			c.Wrapper.Lock.Lock()
+			delete(c.Wrapper.RpcResult, msg.InvokeId)
+			c.Wrapper.Lock.Unlock()
+		}
+
 	case msg.Method == "PRIVATE_MESSAGE":
 		c.Wrapper.Lock.RLock()
 		handler, ok := c.Wrapper.SubFuncs["__private__"]
@@ -650,6 +664,19 @@ func (c *MajulaClient) JoinRaftGroupAsLearner(group string, dbPath string) {
 	c.Send(pkg)
 }
 
+// JoinRaftGroupAsLearnerWithFastSync 加入本地 learner，使用状态机状态传输快速同步
+// 参数：group - raft group 名称，dbPath - learner 本地存储路径
+func (c *MajulaClient) JoinRaftGroupAsLearnerWithFastSync(group string, dbPath string) {
+	pkg := MajulaPackage{
+		Method: "JOIN_RAFT_LEARNER_WITH_FAST_SYNC",
+		Args: map[string]interface{}{
+			"group":  group,
+			"dbpath": dbPath,
+		},
+	}
+	c.Send(pkg)
+}
+
 // LeaveRaftGroupAsLearner 退出本地 learner
 // 参数：group - raft group 名称
 func (c *MajulaClient) LeaveRaftGroupAsLearner(group string) {
@@ -784,6 +811,36 @@ func (c *MajulaClient) GetFromGroup(groupName string, key string, timeout time.D
 
 	c.Send(MajulaPackage{
 		Method:   "GET_FROM_GROUP",
+		Args:     args,
+		InvokeId: invokeId,
+	})
+
+	select {
+	case res := <-ch:
+		return res, true
+	case <-time.After(timeout):
+		return nil, false
+	}
+}
+
+// ConnectToNode 连接到指定节点（通过信令服务器）
+// targetNodeID: 目标节点ID
+// timeout: 超时时间
+// 返回：连接结果和是否成功
+func (c *MajulaClient) ConnectToNode(targetNodeID string, timeout time.Duration) (interface{}, bool) {
+	invokeId := atomic.AddInt64(&c.InvokeId, 1)
+	ch := make(chan interface{}, 1)
+
+	c.Wrapper.Lock.Lock()
+	c.Wrapper.RpcResult[invokeId] = ch
+	c.Wrapper.Lock.Unlock()
+
+	args := map[string]interface{}{
+		"target_node_id": targetNodeID,
+	}
+
+	c.Send(MajulaPackage{
+		Method:   "CONNECT_TO_NODE",
 		Args:     args,
 		InvokeId: invokeId,
 	})

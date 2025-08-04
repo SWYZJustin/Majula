@@ -632,6 +632,53 @@ func (node *Node) RegisterDefaultRPCs() {
 		}
 	})
 
+	node.registerRpcService("addLearnerWithSnapshot", "raft", RPC_FuncInfo{
+		Note: "Add a learner with snapshot to a Raft group",
+	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		group, ok := params["group"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing group"}
+		}
+		learnerID, ok := params["learner_id"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing learner_id"}
+		}
+		snapshotIndex, ok := params["snapshot_index"].(float64)
+		if !ok {
+			return map[string]interface{}{"error": "missing snapshot_index"}
+		}
+		snapshotTerm, ok := params["snapshot_term"].(float64)
+		if !ok {
+			return map[string]interface{}{"error": "missing snapshot_term"}
+		}
+
+		node.RaftManager.RaftStubsMutex.RLock()
+		raftClient, exists := node.RaftManager.RaftStubs[group]
+		node.RaftManager.RaftStubsMutex.RUnlock()
+		if !exists {
+			return map[string]interface{}{"error": fmt.Sprintf("raft group %s not found", group)}
+		}
+
+		if raftClient.Role != Leader {
+			raftClient.Mutex.Lock()
+			res := map[string]interface{}{
+				"success":     false,
+				"redirect_to": raftClient.LeaderHint,
+				"message":     "not leader",
+			}
+			raftClient.Mutex.Unlock()
+
+			return res
+		}
+
+		raftClient.AddLearnerWithSnapshot(learnerID, int64(snapshotIndex), int64(snapshotTerm))
+
+		return map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("learner %s added to group %s with snapshot (index=%d, term=%d)", learnerID, group, int64(snapshotIndex), int64(snapshotTerm)),
+		}
+	})
+
 	// Raft Put操作
 	node.registerRpcService("put", "raft", RPC_FuncInfo{
 		Note: "Put a key-value pair to Raft group",
@@ -762,40 +809,135 @@ func (node *Node) RegisterDefaultRPCs() {
 		node.RaftManager.RaftStubsMutex.RLock()
 		raftClient, exists := node.RaftManager.RaftStubs[group]
 		node.RaftManager.RaftStubsMutex.RUnlock()
-
 		if exists {
-			// 本地有核心节点，直接读取
 			value, err := raftClient.Storage.GetState(group, key)
 			if err != nil {
-				return map[string]interface{}{"error": fmt.Sprintf("failed to get value: %v", err)}
+				return map[string]interface{}{"error": err.Error()}
 			}
 			return map[string]interface{}{
 				"success": true,
 				"value":   value,
 			}
-		} else {
-			// 本地没有核心节点，需要转发给其他核心节点
-			node.RaftManager.RaftPeersMutex.RLock()
-			peers, hasPeers := node.RaftManager.RaftPeers[group]
-			node.RaftManager.RaftPeersMutex.RUnlock()
-
-			if !hasPeers {
-				return map[string]interface{}{"error": fmt.Sprintf("no peers found for raft group %s", group)}
-			}
-
-			// 尝试转发给第一个可用的核心节点
-			for _, peer := range peers {
-				if peer == node.ID {
-					continue // 跳过自己
-				}
-				result, ok := node.MakeRpcRequest(peer, "raft", "get", params)
-				if ok {
-					return result
-				}
-			}
-
-			return map[string]interface{}{"error": fmt.Sprintf("failed to forward get command to any peer in group %s", group)}
 		}
+
+		// 如果本地没有，尝试从其他节点获取
+		node.RaftManager.RaftPeersMutex.RLock()
+		peers, hasPeers := node.RaftManager.RaftPeers[group]
+		node.RaftManager.RaftPeersMutex.RUnlock()
+		if !hasPeers {
+			return map[string]interface{}{"error": fmt.Sprintf("no peers found for raft group %s", group)}
+		}
+
+		// 尝试从第一个peer获取
+		peer := peers[0]
+		result, ok := node.MakeRpcRequest(peer, "raft", "get", params)
+		if !ok {
+			return map[string]interface{}{"error": "RPC call failed"}
+		}
+		return result
+	})
+
+	// 状态机状态传输RPC - 用于Learner快速同步
+	node.registerRpcService("getStateSnapshot", "raft", RPC_FuncInfo{
+		Note: "Get state machine snapshot for learner fast sync",
+	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		group, ok := params["group"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing group"}
+		}
+
+		// 检查本地是否有对应的Raft核心节点
+		node.RaftManager.RaftStubsMutex.RLock()
+		raftClient, exists := node.RaftManager.RaftStubs[group]
+		node.RaftManager.RaftStubsMutex.RUnlock()
+		if exists {
+			// 只有Leader才能提供状态机快照
+			if raftClient.Role != Leader {
+				raftClient.Mutex.Lock()
+				res := map[string]interface{}{
+					"success":     false,
+					"redirect_to": raftClient.LeaderHint,
+					"message":     "not leader",
+				}
+				raftClient.Mutex.Unlock()
+				return res
+			}
+
+			// 获取状态机快照
+			snapshot, err := raftClient.Storage.GetStateSnapshot(group)
+			if err != nil {
+				return map[string]interface{}{"error": err.Error()}
+			}
+
+			return map[string]interface{}{
+				"success":  true,
+				"snapshot": snapshot,
+			}
+		}
+
+		// 如果本地没有，尝试从其他节点获取
+		node.RaftManager.RaftPeersMutex.RLock()
+		peers, hasPeers := node.RaftManager.RaftPeers[group]
+		node.RaftManager.RaftPeersMutex.RUnlock()
+		if !hasPeers {
+			return map[string]interface{}{"error": fmt.Sprintf("no peers found for raft group %s", group)}
+		}
+
+		// 尝试从第一个peer获取
+		peer := peers[0]
+		result, ok := node.MakeRpcRequest(peer, "raft", "getStateSnapshot", params)
+		if !ok {
+			return map[string]interface{}{"error": "RPC call failed"}
+		}
+		return result
+	})
+
+	// 设置状态机状态RPC - 用于Learner接收状态
+	node.registerRpcService("setStateSnapshot", "raft", RPC_FuncInfo{
+		Note: "Set state machine snapshot for learner fast sync",
+	}, func(fun string, params map[string]interface{}, from, to string, invokeId int64) interface{} {
+		group, ok := params["group"].(string)
+		if !ok {
+			return map[string]interface{}{"error": "missing group"}
+		}
+
+		snapshotData, ok := params["snapshot"].(map[string]interface{})
+		if !ok {
+			return map[string]interface{}{"error": "missing snapshot data"}
+		}
+
+		// 检查本地是否有对应的Raft核心节点
+		node.RaftManager.RaftStubsMutex.RLock()
+		raftClient, exists := node.RaftManager.RaftStubs[group]
+		node.RaftManager.RaftStubsMutex.RUnlock()
+		if exists {
+			// 解析快照数据
+			state, ok := snapshotData["state"].(map[string]interface{})
+			if !ok {
+				return map[string]interface{}{"error": "invalid snapshot state data"}
+			}
+
+			// 设置状态机状态
+			err := raftClient.Storage.SetFullState(group, state)
+			if err != nil {
+				return map[string]interface{}{"error": err.Error()}
+			}
+
+			// 更新元数据
+			if commitIndex, ok := snapshotData["commit_index"].(float64); ok {
+				raftClient.CommitIndex = int64(commitIndex)
+			}
+			if lastApplied, ok := snapshotData["last_applied"].(float64); ok {
+				raftClient.LastApplied = int64(lastApplied)
+			}
+
+			return map[string]interface{}{
+				"success": true,
+				"message": fmt.Sprintf("state snapshot applied to learner for group %s", group),
+			}
+		}
+
+		return map[string]interface{}{"error": fmt.Sprintf("raft group %s not found", group)}
 	})
 
 }

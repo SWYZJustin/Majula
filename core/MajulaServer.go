@@ -92,6 +92,7 @@ func SetupRoutes(server *Server) *gin.Engine {
 	registerDualMethod(rg, "/upload", server.handleFileUpload, false)
 	registerDualMethod(rg, "/download", server.handleFileDownload, false)
 	registerDualMethod(rg, "/join_raft_learner", server.handleJoinRaftLearner, false)
+	registerDualMethod(rg, "/join_raft_learner_with_fast_sync", server.handleJoinRaftLearnerWithFastSync, false)
 	registerDualMethod(rg, "/leave_raft_learner", server.handleLeaveRaftLearner, false)
 	registerDualMethod(rg, "/elect/join", server.handleElectJoin, false)
 	registerDualMethod(rg, "/elect/giveup", server.handleElectGiveUp, false)
@@ -100,6 +101,7 @@ func SetupRoutes(server *Server) *gin.Engine {
 	registerDualMethod(rg, "/raft/put", server.handleRaftPut, false)
 	registerDualMethod(rg, "/raft/delete", server.handleRaftDelete, false)
 	registerDualMethod(rg, "/raft/get", server.handleRaftGet, false)
+	registerDualMethod(rg, "/connect_to_node", server.handleConnectToNode, false)
 	return r
 }
 
@@ -644,8 +646,13 @@ func (s *Server) handlePackage(client *ClientConnection, pkg api.MajulaPackage) 
 
 	case "JOIN_RAFT_LEARNER":
 		go s.handleJoinRaftLearnerPackage(client, pkg)
+	case "JOIN_RAFT_LEARNER_WITH_FAST_SYNC":
+		go s.handleJoinRaftLearnerWithFastSyncPackage(client, pkg)
 	case "LEAVE_RAFT_LEARNER":
 		go s.handleLeaveRaftLearnerPackage(client, pkg)
+
+	case "CONNECT_TO_NODE":
+		go s.handleConnectToNodePackage(client, pkg)
 
 	case "JOIN_ELECTION":
 		go s.handleJoinElectionPackage(client, pkg)
@@ -681,6 +688,24 @@ func (s *Server) handleJoinRaftLearnerPackage(client *ClientConnection, pkg api.
 	s.Node.RaftManager.JoinAsLearner(group, s.Node, dbPath)
 }
 
+// handleJoinRaftLearnerWithFastSyncPackage 处理客户端请求以 learner 形式加入 raft group，使用快速同步
+// 参数：client - 客户端连接，pkg - 指令包
+func (s *Server) handleJoinRaftLearnerWithFastSyncPackage(client *ClientConnection, pkg api.MajulaPackage) {
+	group, _ := pkg.Args["group"].(string)
+	dbPath, _ := pkg.Args["dbpath"].(string)
+	if group == "" || dbPath == "" {
+		return
+	}
+
+	// 使用快速同步方式加入
+	_, err := s.Node.RaftManager.CreateLearnerWithFastSync(group, s.Node, dbPath)
+	if err != nil {
+		Error("Learner快速同步加入失败", "组名=", group, "错误=", err.Error())
+	} else {
+		Log("Learner快速同步加入成功", "组名=", group, "客户端ID=", client.ID)
+	}
+}
+
 // handleLeaveRaftLearnerPackage 处理客户端请求以 learner 形式退出 raft group
 // 参数：client - 客户端连接，pkg - 指令包
 func (s *Server) handleLeaveRaftLearnerPackage(client *ClientConnection, pkg api.MajulaPackage) {
@@ -689,6 +714,61 @@ func (s *Server) handleLeaveRaftLearnerPackage(client *ClientConnection, pkg api
 		return
 	}
 	s.Node.RaftManager.LeaveAsLearner(group, s.Node)
+}
+
+// handleConnectToNodePackage 处理连接到指定节点的请求
+func (s *Server) handleConnectToNodePackage(client *ClientConnection, pkg api.MajulaPackage) {
+	targetNodeID, _ := pkg.Args["target_node_id"].(string)
+	if targetNodeID == "" {
+		// 发送错误响应
+		response := api.MajulaPackage{
+			Method:   "CONNECT_TO_NODE_RESPONSE",
+			Result:   map[string]interface{}{"error": "missing target_node_id"},
+			InvokeId: pkg.InvokeId,
+		}
+		s.SendToClient(client.ID, response)
+		return
+	}
+
+	// 检查是否有信令客户端
+	if s.Node.SignalingClient == nil {
+		response := api.MajulaPackage{
+			Method:   "CONNECT_TO_NODE_RESPONSE",
+			Result:   map[string]interface{}{"error": "signaling client not available"},
+			InvokeId: pkg.InvokeId,
+		}
+		s.SendToClient(client.ID, response)
+		return
+	}
+
+	// 异步执行连接
+	go func() {
+		// 通过信令客户端请求KCP连接
+		response, err := s.Node.SignalingClient.RequestKCPConnection(targetNodeID)
+
+		var result map[string]interface{}
+		if err != nil {
+			result = map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			}
+		} else {
+			result = map[string]interface{}{
+				"success":     response.Success,
+				"target_node": targetNodeID,
+				"public_addr": response.PublicAddr,
+				"error_msg":   response.ErrorMsg,
+			}
+		}
+
+		// 发送响应
+		responsePkg := api.MajulaPackage{
+			Method:   "CONNECT_TO_NODE_RESPONSE",
+			Result:   result,
+			InvokeId: pkg.InvokeId,
+		}
+		s.SendToClient(client.ID, responsePkg)
+	}()
 }
 
 // 向指定客户端发送消息。
@@ -1339,6 +1419,24 @@ func (s *Server) handleJoinRaftLearner(c *gin.Context) {
 	c.JSON(200, gin.H{"status": "ok", "group": group, "dbpath": dbPath})
 }
 
+func (s *Server) handleJoinRaftLearnerWithFastSync(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	group, _ := params["group"].(string)
+	dbPath, _ := params["dbpath"].(string)
+	if group == "" || dbPath == "" {
+		c.JSON(400, gin.H{"error": "group 和 dbpath 不能为空"})
+		return
+	}
+
+	// 使用快速同步方式加入
+	_, err := s.Node.RaftManager.CreateLearnerWithFastSync(group, s.Node, dbPath)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"status": "ok", "group": group, "dbpath": dbPath, "method": "fast_sync"})
+}
+
 func (s *Server) handleLeaveRaftLearner(c *gin.Context) {
 	_, params := parseGinParameters(c)
 	group, _ := params["group"].(string)
@@ -1352,6 +1450,41 @@ func (s *Server) handleLeaveRaftLearner(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"status": "ok", "group": group})
+}
+
+func (s *Server) handleConnectToNode(c *gin.Context) {
+	_, params := parseGinParameters(c)
+	targetNodeID, _ := params["target_node_id"].(string)
+	if targetNodeID == "" {
+		c.JSON(400, gin.H{"error": "target_node_id 不能为空"})
+		return
+	}
+
+	// 检查是否有信令客户端
+	if s.Node.SignalingClient == nil {
+		c.JSON(500, gin.H{"error": "signaling client not available"})
+		return
+	}
+
+	// 异步执行连接
+	go func() {
+		// 通过信令客户端请求KCP连接
+		response, err := s.Node.SignalingClient.RequestKCPConnection(targetNodeID)
+
+		if err != nil {
+			Error("节点连接失败", "目标节点=", targetNodeID, "错误=", err.Error())
+		} else if response.Success {
+			Log("节点连接成功", "目标节点=", targetNodeID, "公网地址=", response.PublicAddr)
+		} else {
+			Error("节点连接失败", "目标节点=", targetNodeID, "错误=", response.ErrorMsg)
+		}
+	}()
+
+	c.JSON(200, gin.H{
+		"status":      "connecting",
+		"target_node": targetNodeID,
+		"message":     "Connection request sent, check logs for result",
+	})
 }
 
 // 处理加入选举请求

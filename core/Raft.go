@@ -57,6 +57,7 @@ const (
 	delOp
 	addLearner
 	removeLearner
+	addLearnerWithSnapshot
 )
 
 // RaftClient 实现Raft协议的核心状态与主流程，负责选举、日志复制、状态机应用等。
@@ -203,6 +204,12 @@ func (rc *RaftClient) applyLogToStateMachine() {
 			rc.NextIndex[cmd.Key] = rc.CommitIndex + 1
 			rc.MatchIndex[cmd.Key] = 0
 			Log("Raft应用添加学习者命令", "节点ID=", rc.ID, "学习者ID=", cmd.Key)
+		case addLearnerWithSnapshot:
+			rc.Learners.Store(cmd.Key, struct{}{})
+			// 使用快照信息设置索引，而不是当前的 CommitIndex
+			rc.NextIndex[cmd.Key] = cmd.SnapshotIndex + 1
+			rc.MatchIndex[cmd.Key] = cmd.SnapshotIndex // 快照索引已匹配
+			Log("Raft应用添加快照学习者命令", "节点ID=", rc.ID, "学习者ID=", cmd.Key, "快照索引=", cmd.SnapshotIndex)
 		case removeLearner:
 			rc.Learners.Delete(cmd.Key)
 			delete(rc.NextIndex, cmd.Key)
@@ -958,11 +965,14 @@ type RaftLogEntry struct {
 	Command RaftCommand
 }
 
-// RaftCommand 表示一条可应用到状态机的命令。
+// RaftCommand Raft命令结构体，用于客户端请求和日志条目
 type RaftCommand struct {
 	Op    RaftOpType
 	Key   string
 	Value interface{}
+	// 快照 Learner 相关字段
+	SnapshotIndex int64 // 快照对应的日志索引
+	SnapshotTerm  int64 // 快照对应的日志任期
 }
 
 // RaftPayload 表示Raft消息的载体。
@@ -1122,6 +1132,20 @@ func (rc *RaftClient) AddLearner(nodeID string) {
 	rc.HandleClientRequest(cmd)
 }
 
+// AddLearnerWithSnapshot 添加一个通过快照快速同步的Learner节点。
+// nodeID: Learner节点ID
+// snapshotIndex: 快照对应的日志索引
+// snapshotTerm: 快照对应的日志任期
+func (rc *RaftClient) AddLearnerWithSnapshot(nodeID string, snapshotIndex, snapshotTerm int64) {
+	cmd := RaftCommand{
+		Op:            addLearnerWithSnapshot,
+		Key:           nodeID,
+		SnapshotIndex: snapshotIndex,
+		SnapshotTerm:  snapshotTerm,
+	}
+	rc.HandleClientRequest(cmd)
+}
+
 // RemoveLearner 移除一个Learner节点。
 // nodeID: Learner节点ID
 func (rc *RaftClient) RemoveLearner(nodeID string) {
@@ -1130,6 +1154,13 @@ func (rc *RaftClient) RemoveLearner(nodeID string) {
 		Key: nodeID,
 	}
 	rc.HandleClientRequest(cmd)
+}
+
+// IsLearner 检查当前节点是否为Learner
+// 返回：是否为Learner
+func (rc *RaftClient) IsLearner() bool {
+	_, exists := rc.Learners.Load(rc.ID)
+	return exists
 }
 
 // Close 关闭RaftClient，停止主循环

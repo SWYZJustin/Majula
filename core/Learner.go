@@ -5,8 +5,19 @@ import (
 	"sync"
 )
 
-// LearnerClient 表示一个只学习日志、不参与选举和投票的Raft从节点。
-// 负责接收Leader的日志复制，持久化日志并应用到本地状态机。
+// LearnerClient 实现Raft Learner角色，只接收日志，不参与投票和选举。
+// 主要字段：
+//   - ID: 本地client唯一标识
+//   - Group: 所属同步组ID
+//   - CurrentTerm: 当前任期号
+//   - Log: 日志条目
+//   - CommitIndex/LastApplied: 日志提交/应用进度
+//   - LeaderHint: 当前已知的Leader节点ID
+//   - Storage: LevelDB持久化
+//   - ApplyCallback: 日志应用回调
+//   - 其余为锁、网络通信等
+//
+// 用法：每个group对应一个LearnerClient实例，用于只读场景。
 type LearnerClient struct {
 	ID          string         // 本地client唯一ID
 	Group       string         // 所属groupID
@@ -20,6 +31,12 @@ type LearnerClient struct {
 	LeaderHint    string                   // 当前已知的LeaderID
 	Storage       *Storage                 // 持久化存储
 	ApplyCallback func(entry RaftLogEntry) // 日志应用回调
+
+	// 快照 Learner 相关字段
+	IsSnapshotLearner bool  // 是否为快照 Learner
+	SnapshotIndex     int64 // 快照对应的日志索引
+	SnapshotTerm      int64 // 快照对应的日志任期
+	MaxAppliedIndex   int64 // 最大已应用索引（用于快照 Learner）
 }
 
 // NewLearnerClient 创建一个新的LearnerClient实例，并从存储加载元数据和日志。
@@ -99,6 +116,13 @@ func (lc *LearnerClient) handleAppendEntries(payload RaftPayload) {
 
 	lastIndex := int64(len(lc.Log))
 
+	// 快照 Learner 的特殊处理
+	if lc.IsSnapshotLearner {
+		lc.handleAppendEntriesForSnapshot(payload)
+		return
+	}
+
+	// 传统 Learner 的处理逻辑
 	// 1. 日志过短，直接拒绝
 	if payload.PrevLogIndex > lastIndex {
 		lc.replyAppendEntries(payload.LeaderId, false, 0, lastIndex+1, payload.InvokeId)
@@ -151,6 +175,56 @@ func (lc *LearnerClient) handleAppendEntries(payload RaftPayload) {
 
 	// 4. 回复 Leader 成功
 	lc.replyAppendEntries(payload.LeaderId, true, 0, int64(len(lc.Log)), payload.InvokeId)
+}
+
+// handleAppendEntriesForSnapshot 快照 Learner 的特殊处理逻辑
+func (lc *LearnerClient) handleAppendEntriesForSnapshot(payload RaftPayload) {
+	// 快照 Learner 的核心逻辑：
+	// 1. 状态机已经是最新的（通过快照同步）
+	// 2. 不需要检查日志连续性
+	// 3. 只追加快照索引之后的新日志
+	// 4. 回复时返回最大已应用索引
+
+	// 追加新日志（只追加快照索引之后的）
+	if len(payload.Entries) > 0 {
+		for _, entry := range payload.Entries {
+			// 只追加快照索引之后的日志
+			if entry.Index > lc.SnapshotIndex {
+				logIdx := int(entry.Index) - 1
+				if logIdx < len(lc.Log) {
+					if lc.Log[logIdx].Term != entry.Term {
+						// 截断冲突日志
+						lc.Log = lc.Log[:logIdx]
+						_ = lc.Storage.DeleteLogsFrom(lc.Group, entry.Index)
+					}
+				}
+				// 追加新日志并持久化
+				if int64(len(lc.Log)) < entry.Index {
+					lc.Log = append(lc.Log, entry)
+					_ = lc.Storage.SaveLog(lc.Group, entry)
+				}
+
+				// 更新最大已应用索引
+				if entry.Index > lc.MaxAppliedIndex {
+					lc.MaxAppliedIndex = entry.Index
+				}
+			}
+		}
+	}
+
+	// 推进 CommitIndex（基于状态机状态）
+	if payload.LeaderCommit > lc.CommitIndex {
+		lc.CommitIndex = payload.LeaderCommit
+		// 注意：状态机已经是最新的，不需要重新应用
+		_ = lc.Storage.SaveMeta(lc.Group, lc.CurrentTerm, "", lc.CommitIndex, lc.LastApplied)
+	}
+
+	// 回复时返回最大已应用索引，不是日志长度
+	replyIndex := lc.MaxAppliedIndex
+	if replyIndex == 0 {
+		replyIndex = lc.SnapshotIndex // 如果没有新日志，返回快照索引
+	}
+	lc.replyAppendEntries(payload.LeaderId, true, 0, replyIndex, payload.InvokeId)
 }
 
 // replyAppendEntries 回复Leader的AppendEntries请求，返回复制结果和冲突信息。
